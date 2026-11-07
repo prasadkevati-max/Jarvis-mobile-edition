@@ -25,3 +25,4 @@ chat (border:1px solid rgba(0, 255, 255,3); height: 150px; overflow-y:auto; padd
 input-area(display: flex;gap:8px; margin-top:12px)
 
 input (flex:1;background: #000; border: 1px solid #eff;color:#eff;padding:10px) button{background:#eff;color: #000; border: none; padding: 10px 16px; font-weight:bold)
+
