@@ -1,39 +1,35 @@
-const API_KEY = "AQ.Ab8RN6J9W2CM-SecQO6ElbphJjfA1pHaMJOwz9j__ddgs2xXZw";
-const MODEL_NAME = "gemini-2.5-flash";
+<!DOCTYPEDOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>J.A.R.V.I.S</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header><h1>J.A.R.V.I.S</h1><p>MOBILE EDITION</p></header>
 
-async function ask(){
-    const promptText = document.getElementById("prompt").value;
-    document.getElementById("reply").innerText = "PROCESSING...";
-    document.getElementById("status").innerText = "CONNECTING...";
-    
-    try{
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
-        
-        const res = await fetch(url, {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                system_instruction: {
-                    parts: [{ text: "You are J.A.R.V.I.S., Tony Stark's AI assistant. Keep replies sharp, efficient, slightly witty, and formatted cleanly." }]
-                },
-                contents: [{ 
-                    parts: [{ text: promptText }] 
-                }]
-            })
-        });
-        
-        const data = await res.json();
-        
-        if(data.candidates && data.candidates[0]?.content?.parts?.[0]?.text){
-            document.getElementById("reply").innerText = data.candidates[0].content.parts[0].text;
-            document.getElementById("status").innerText = "⚡ BRAIN ONLINE";
-            document.getElementById("status").style.color = "#0f0";
-        } else {
-            document.getElementById("reply").innerText = "ERROR: " + JSON.stringify(data, null, 2);
-            document.getElementById("status").innerText = "API ERROR";
-        }
-    }catch(e){
-        document.getElementById("reply").innerText = "NETWORK ERROR: " + e.message;
-        document.getElementById("status").innerText = "CONNECTION FAILED";
-    }
-}
+    <div class="core">
+        <div class="ring r1"></div>
+        <div class="ring r2"></div>
+        <div class="center"></div>
+    </div>
+    <p class="core-text">CORE ACTIVE</p>
+
+    <div class="status">
+        <h2>SYSTEM STATUS</h2>
+        <div class="row"><span>AI CORE</span><b class="on">ONLINE</b></div>
+        <div class="row"><span>NETWORK</span><b class="on">ONLINE</b></div>
+        <div class="row"><span>VOICE</span><b class="off">LOCKED</b></div>
+        <div class="row"><span>MEMORY</span><b class="off">LOCKED</b></div>
+    </div>
+
+    <div class="chat" id="chat"></div>
+    <div class="input-area">
+        <input id="msg" placeholder="Ask J.A.R.V.I.S...">
+        <button id="send">SEND</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
