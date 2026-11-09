@@ -1,16 +1,21 @@
-async function sendMessage() {
-  const input = document.getElementById("user-input");
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = "";
+const chat = document.getElementById('chat');
+const input = document.getElementById('msg');
 
-  addMessage("YOU", text);
+document.getElementById('send').onclick = () => {
+    const t = input.value.trim();
+    if (!t) return;
+    add('YOU: ' + t, 'user');
+    input.value = '';
+    add('J.A.R.V.I.S: Processing...', 'ai');
+    setTimeout(() => {
+        chat.lastChild.innerText = 'J.A.R.V.I.S: Systems online. How may I assist you, Boss?';
+    }, 1000);
+};
 
-  const res = await fetch("YOUR_BACKEND_URL", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: text })
-  });
-  const data = await res.json();
-  addMessage("J.A.R.V.I.S", data.reply);
+function add(text, who) {
+    const d = document.createElement('div');
+    d.className = 'msg ' + who;
+    d.innerText = text;
+    chat.appendChild(d);
+    chat.scrollTop = chat.scrollHeight;
 }
