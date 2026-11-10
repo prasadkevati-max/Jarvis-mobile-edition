@@ -5,7 +5,7 @@ if (!API_KEY) {
   if (API_KEY) localStorage.setItem("jarvis_key", API_KEY);
 }
 // https://aistudio.google.com lo free key teesukondi
-const MODEL = "gemini-2.0-flash";           // model pani cheyakapote kotha model peru pettandi
+const MODEL = "gemini-3.8-flash";           // model pani cheyakapote kotha model peru pettandi
 const MEMORY_KEY = "jarvis_memory";
 
 // ====== ELEMENTS (index.html IDs tho match avvali) ======
