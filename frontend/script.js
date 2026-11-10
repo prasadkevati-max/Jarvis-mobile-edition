@@ -1,170 +1,156 @@
-// ====== 1. API KEY & SMART MODELS ======
-let API_KEY = localStorage.getItem('jarvis_key');
-if(!API_KEY) {
-    API_KEY = prompt('Enter your Gemini API Key:');
-    if(API_KEY) localStorage.setItem('jarvis_key', API_KEY);
+// ====== SETTINGS ======
+let API_KEY = localStorage.getItem("jarvis_key");
+if (!API_KEY) {
+  API_KEY = prompt("Gemini API key enter cheyandi:");
+  if (API_KEY) localStorage.setItem("jarvis_key", API_KEY);
 }
-const MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-lite'];
+// https://aistudio.google.com lo free key teesukondi
+const MODEL = "gemini-2.0-flash";           // model pani cheyakapote kotha model peru pettandi
+const MEMORY_KEY = "jarvis_memory";
 
-// ====== 2. MEMORY SYSTEM ======
-let MEMORY = JSON.parse(localStorage.getItem('jarvis_memory')) || [];
+// ====== ELEMENTS (index.html IDs tho match avvali) ======
+const chatBox = document.getElementById("chat");
+const msgInput = document.getElementById("msg");
+const sendBtn = document.getElementById("send");
+const micBtn = document.getElementById("mic-btn");
+const camBtn = document.getElementById("cam-btn");
+const clearBtn = document.getElementById("clear-btn");
+const imgInput = document.getElementById("img-input");
+const coreText = document.querySelector(".core-text");
+
+// ====== MEMORY ======
+let history = [];
+try {
+  history = JSON.parse(localStorage.getItem(MEMORY_KEY)) || [];
+} catch (e) {
+  history = [];
+}
+
 function saveMemory() {
-    localStorage.setItem('jarvis_memory', JSON.stringify(MEMORY));
+  try {
+    localStorage.setItem(MEMORY_KEY, JSON.stringify(history.slice(-30)));
+  } catch (e) {}
 }
 
-const chat = document.getElementById('chat');
-const input = document.getElementById('img-input');
-const micBtn = document.getElementById('mic-btn');
-const clearBtn = document.getElementById('clear-btn');
-const imgInput = document.getElementById('img-input');
-
-MEMORY.forEach(m => add((m.role === 'user' ? 'YOU: ' : 'J.A.R.V.I.S: ') + m.text, m.role === 'user' ? 'user' : 'ai'));
-
-// ====== 3. GEMINI BRAIN (MEMORY INTEGRATED) ======
-async function callGemini(p) {
-    const contents = MEMORY.slice(-12).map(m => ({role: m.role, parts:[{text: m.text}]}));
-    contents.push({role: 'user', parts: [{text: p}]});
-    let lastErr;
-    for (const m of MODELS) {
-        try {
-            const res = await fetch(`https://googleapis.com{m}:generateContent?key=` + API_KEY, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({contents: contents})
-            });
-            const data = await res.json();
-            if (data.error) {
-                lastErr = new Error(data.error.message);
-                if (/high demand|temporar|quota|rate|unavailable|deprecated/i.test(data.error.message)) continue;
-                throw lastErr;
-            }
-            return data.candidates[0].content.parts[0].text;
-        } catch (e) {
-            lastErr = e;
-        }
-    }
-    throw lastErr;
+// ====== UI HELPERS ======
+function addMessage(who, text) {
+  const div = document.createElement("div");
+  div.style.margin = "8px 0";
+  div.style.color = who === "You" ? "#00ffff" : "#00ff66";
+  div.textContent = who + ": " + text;
+  chatBox.appendChild(div);
+  chatBox.scrollTop = chatBox.scrollHeight;
 }
 
-async function askGemini(p) {
-    add('J.A.R.V.I.S: Thinking...', 'ai');
-    try {
-        const reply = await callGemini(p);
-        MEMORY.push({role: 'user', text: p});
-        MEMORY.push({role: 'model', text: reply});
-        saveMemory();
-        chat.lastChild.innerText = 'J.A.R.V.I.S: ' + reply;
-        speak(reply);
-    } catch (e) {
-        chat.lastChild.innerText = 'J.A.R.V.I.S: ERROR - ' + e.message;
-    }
+function setStatus(text) {
+  if (coreText) coreText.textContent = text;
 }
 
-// ====== 4. VISION ENGINE (EYES) ======
-if (camBtn && imgInput) {
-    camBtn.onclick = () => imgInput.click();
-    imgInput.onchange = () => {
-        const file = imgInput.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = async () => {
-            const base64 = reader.result.split(',')[1];
-            const q = input.value.trim() || 'What do you see? Describe briefly.';
-            add('YOU: - ' + q, 'user');
-            input.value = '';
-            askVision(base64, file.type, q);
-        };
-        reader.readAsDataURL(file);
-    };
+history.forEach(h => addMessage(h.role === "user" ? "You" : "JARVIS", h.parts[0].text));
+
+// ====== AI CALL ======
+async function askAI(text, imageBase64 = null, mime = "image/jpeg") {
+  if (!API_KEY) {
+    addMessage("JARVIS", "API key pettaledu. script.js lo API_KEY set cheyandi.");
+    return;
+  }
+
+  const parts = [{ text }];
+  if (imageBase64) parts.push({ inline_data: { mime_type: mime, data: imageBase64 } });
+
+  const contents = [...history, { role: "user", parts }];
+  setStatus("THINKING...");
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents })
+      }
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || "Request failed");
+
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Response raledu.";
+    addMessage("JARVIS", reply);
+
+    history.push({ role: "user", parts: [{ text }] });
+    history.push({ role: "model", parts: [{ text: reply }] });
+    saveMemory();
+    speak(reply);
+  } catch (err) {
+    addMessage("JARVIS", "Error: " + err.message);
+  } finally {
+    setStatus("SYSTEM READY");
+  }
 }
 
-async function askVision(base64, mime, q) {
-    add('J.A.R.V.I.S: Analyzing image...', 'ai');
-    let lastErr;
-    for (const m of MODELS) {
-        try {
-            const res = await fetch(`https://googleapis.com{m}:generateContent?key=` + API_KEY, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{text: q}, {inlineData: {mimeType: mime, data: base64}}]
-                    }]
-                })
-            });
-            const data = await res.json();
-            if (data.error) {
-                lastErr = new Error(data.error.message);
-                if (/high demand|temporar|quota|rate|unavailable|deprecated/i.test(data.error.message)) continue;
-                throw lastErr;
-            }
-            const reply = data.candidates[0].content.parts[0].text;
-            chat.lastChild.innerText = 'J.A.R.V.I.S: ' + reply;
-            speak(reply);
-            return;
-        } catch (e) {
-            lastErr = e;
-        }
-    }
-    chat.lastChild.innerText = 'J.A.R.V.I.S: ERROR - ' + lastErr.message;
+// ====== SEND ======
+function sendMessage() {
+  const text = msgInput.value.trim();
+  if (!text) return;
+  addMessage("You", text);
+  msgInput.value = "";
+  askAI(text);
 }
 
-// ====== 5. VOICE & UTILS ======
+sendBtn.addEventListener("click", sendMessage);
+msgInput.addEventListener("keydown", e => {
+  if (e.key === "Enter") sendMessage();
+});
+
+// ====== VOICE OUTPUT ======
+function speak(text) {
+  if (!("speechSynthesis" in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+// ====== MIC (VOICE INPUT) ======
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (SR && micBtn) {
-    const rec = new SR();
-    rec.lang = 'en-US';
-    rec.onresult = (e) => {
-        const t = e.results[0][0].transcript;
-        add('YOU: ' + t, 'user');
-        askGemini(t);
-    };
-    micBtn.onclick = () => {
-        rec.start();
-        micBtn.innerText = 'LISTENING...';
-    };
-    rec.onend = () => {
-        micBtn.innerText = '🎙️';
-    };
-}
+micBtn.addEventListener("click", () => {
+  if (!SR) {
+    addMessage("JARVIS", "Mee browser lo voice input support ledu. Chrome vaadandi.");
+    return;
+  }
+  const rec = new SR();
+  rec.lang = "en-IN"; // Telugu kosam "te-IN"
+  rec.onstart = () => setStatus("LISTENING...");
+  rec.onend = () => setStatus("SYSTEM READY");
+  rec.onerror = e => addMessage("JARVIS", "Mic error: " + e.error);
+  rec.onresult = e => {
+    const text = e.results[0][0].transcript;
+    addMessage("You", text);
+    askAI(text);
+  };
+  rec.start();
+});
 
-let voices = [];
-function loadVoices() {
-    voices = speechSynthesis.getVoices();
-}
-loadVoices();
-speechSynthesis.onvoiceschanged = loadVoices;
+// ====== CAMERA / IMAGE ======
+camBtn.addEventListener("click", () => imgInput.click());
 
-function speak(t) {
-    const u = new SpeechSynthesisUtterance(t);
-    u.rate = 1.05;
-    u.pitch = 0.85;
-    const v = voices.find(v => v.lang.startsWith('en'));
-    if (v) u.voice = v;
-    speechSynthesis.speak(u);
-}
+imgInput.addEventListener("change", () => {
+  const file = imgInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const base64 = reader.result.split(",")[1];
+    addMessage("You", "[Image pampanu] " + file.name);
+    askAI("Ee image gurinchi cheppu.", base64, file.type);
+  };
+  reader.readAsDataURL(file);
+  imgInput.value = "";
+});
 
-document.getElementById('send').onclick = () => {
-    const t = input.value.trim();
-    if (!t) return;
-    add('YOU: ' + t, 'user');
-    input.value = '';
-    askGemini(t);
-};
-
-if (clearBtn) {
-    clearBtn.onclick = () => {
-        MEMORY = [];
-        saveMemory();
-        chat.innerHTML = '';
-        add('SYSTEM: Memory cleared.', 'ai');
-    };
-}
-
-function add(t, w) {
-    const d = document.createElement('div');
-    d.className = 'msg ' + w;
-    d.innerText = t;
-    chat.appendChild(d);
-    chat.scrollTop = chat.scrollHeight;
-}
+// ====== CLEAR MEMORY ======
+clearBtn.addEventListener("click", () => {
+  history = [];
+  try {
+    localStorage.removeItem(MEMORY_KEY);
+  } catch (e) {}
+  chatBox.innerHTML = "";
+  addMessage("JARVIS", "Memory clear ayyindi.");
+});
