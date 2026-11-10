@@ -47,7 +47,19 @@ function setStatus(text) {
 }
 
 history.forEach(h => addMessage(h.role === "user" ? "You" : "JARVIS", h.parts[0].text));
-
+async function fetchWithRetry(url, options, tries = 4) {
+  let res;
+  for (let i = 0; i < tries; i++) {
+    res = await fetch(url, options);
+    if ((res.status === 503 || res.status === 429) && i < tries - 1) {
+      setStatus("RETRYING...");
+      await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+      continue;
+    }
+    break;
+  }
+  return res;
+}
 // ====== AI CALL ======
 async function askAI(text, imageBase64 = null, mime = "image/jpeg") {
   if (!API_KEY) {
@@ -62,7 +74,7 @@ async function askAI(text, imageBase64 = null, mime = "image/jpeg") {
   setStatus("THINKING...");
 
   try {
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`,
       {
         method: "POST",
