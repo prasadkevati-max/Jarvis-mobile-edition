@@ -1,45 +1,199 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>J.A.R.V.I.S</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S</title>
+<link href="https://fonts.googleapis.com/css2?family=Kaushan+Script&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#000;color:#fff;font-family:'Kaushan Script',cursive;text-align:center;padding:16px}
+  h1{margin:10px 0 0;font-size:2.4rem;letter-spacing:.3em;text-shadow:0 0 14px #0ff}
+  .sub{letter-spacing:.35em;font-size:.8rem;color:#bbb}
+  .orb{position:relative;width:260px;height:260px;margin:30px auto}
+  .ring{position:absolute;border-radius:50%;border:3px solid #0ff;box-shadow:0 0 25px #0ff,inset 0 0 25px #0ff}
+  .r1{inset:0;animation:spin 8s linear infinite;border-right-color:transparent}
+  .r2{inset:32px;animation:spin 5s linear infinite reverse;border-bottom-color:transparent}
+  .core{position:absolute;inset:80px;border-radius:50%;background:#0ee;display:flex;align-items:center;justify-content:center;font-size:.8rem;letter-spacing:.2em;padding:10px;transition:.3s}
+  .core.busy{animation:pulse 1s infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes pulse{50%{box-shadow:0 0 40px #0ff;transform:scale(1.08)}}
+  .panel{border:1px solid #0a4a4f;background:#020d0d;padding:16px;margin:16px auto;max-width:900px;text-align:left}
+  .row{display:flex;justify-content:space-between;margin:8px 0}
+  .ok{color:#0f0}
+  .controls{display:flex;flex-wrap:wrap;gap:10px}
+  input[type=text]{flex:1 1 200px;min-width:0;background:#000;border:1px solid #0ff;color:#0ff;padding:14px;font:inherit;font-size:1rem}
+  button{background:#0ff;border:0;color:#000;padding:14px 18px;font:inherit;font-size:1rem;cursor:pointer}
+  button:active{background:#0aa}
+  #log{max-height:45vh;overflow-y:auto;margin-top:14px}
+  .msg{margin:8px 0;padding:10px;border-left:3px solid #0ff;white-space:pre-wrap;word-break:break-word}
+  .me{border-color:#0f0;color:#9f9}
+  .err{border-color:#f55;color:#f99}
+  #preview{max-width:120px;display:none;margin-top:10px;border:1px solid #0ff}
+  .link{background:none;color:#0ff;text-decoration:underline;padding:0;font-size:.9rem;margin-top:10px}
+</style>
 </head>
 <body>
-    <header>
-        <h1>J.A.R.V.I.S</h1>
-        <p>PERSONAL AI ASSISTANT</p>
-    </header>
-    
-    <div class="core">
-        <div class="ring r1"></div>
-        <div class="ring r2"></div>
-        <div class="center">
-            <p class="core-text">SYSTEM READY</p>
-        </div>
+  <h1>J.A.R.V.I.S</h1>
+  <div class="sub">PERSONAL AI ASSISTANT</div>
+
+  <div class="orb">
+    <div class="ring r1"></div><div class="ring r2"></div>
+    <div class="core" id="core">SYSTEM READY</div>
+  </div>
+
+  <div class="panel">
+    <div style="letter-spacing:.2em;margin-bottom:8px">SYSTEM DIAGNOSTICS</div>
+    <div class="row"><span>AI ENGINE</span><span class="ok" id="sEngine">CHECKING</span></div>
+    <div class="row"><span>CONNECTION</span><span class="ok" id="sNet">ONLINE</span></div>
+    <div class="row"><span>VOICE INTERFACE</span><span class="ok" id="sVoice">READY</span></div>
+    <div class="row"><span>LONG-TERM MEMORY</span><span class="ok" id="sMem">ACTIVE</span></div>
+  </div>
+
+  <div class="panel">
+    <div class="controls">
+      <input type="text" id="cmd" placeholder="Enter a command for JARVIS" autocomplete="off">
+      <button id="execBtn">EXECUTE</button>
+      <button id="micBtn" aria-label="Microphone">🎤</button>
+      <button id="camBtn" aria-label="Camera">📷</button>
+      <button id="clearBtn">CLEAR MEMORY</button>
     </div>
-    
-    <div class="status">
-        <h2>SYSTEM DIAGNOSTICS</h2>
-        <div class="row"><span>AI ENGINE</span> <b class="on">OPERATIONAL</b></div>
-        <div class="row"><span>CONNECTION</span> <b class="on">ONLINE</b></div>
-        <div class="row"><span>VOICE INTERFACE</span> <b class="on">READY</b></div>
-        <div class="row"><span>LONG-TERM MEMORY</span> <b class="on">ACTIVE</b></div>
-    </div>
-    
-    <div class="chat">
-        <div id="chat"></div>
-        <div class="input-area">
-            <input id="msg" placeholder="Enter a command for J.A.R.V.I.S...">
-            <button id="send">EXECUTE</button>
-            <button id="mic-btn" aria-label="Activate voice input">🎤</button>
-            <button id="cam-btn" aria-label="Analyze Image">📷</button>
-            <button id="clear-btn">CLEAR MEMORY</button>
-            <input id="img-input" type="file" accept="image/*" style="display:none">
-        </div>
-    </div>
-    
-    <script src="script.js"></script>
+    <input type="file" id="file" accept="image/*" capture="environment" hidden>
+    <img id="preview" alt="">
+    <button class="link" id="keyBtn">Set / change API key</button>
+    <div id="log"></div>
+  </div>
+
+<script>
+// ===== Settings =====
+// Get a free Gemini key at https://aistudio.google.com/apikey
+const MODEL = "gemini-2.0-flash";
+const SYSTEM = "You are JARVIS, a helpful, concise personal AI assistant. Reply in the language the user uses.";
+
+// ===== Helpers =====
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+let history = store.get("jarvis_history", []);   // long-term memory
+let imageData = null;                            // {mime, data}
+
+function setStatus(){
+  const hasKey = !!store.get("jarvis_key", "");
+  $("sEngine").textContent = hasKey ? "OPERATIONAL" : "NEEDS API KEY";
+  $("sEngine").style.color = hasKey ? "#0f0" : "#fa0";
+  $("sNet").textContent = navigator.onLine ? "ONLINE" : "OFFLINE";
+  $("sMem").textContent = history.length ? "ACTIVE (" + history.length + ")" : "ACTIVE";
+}
+function addMsg(text, cls){
+  const d = document.createElement("div");
+  d.className = "msg " + (cls || "");
+  d.textContent = text;
+  $("log").appendChild(d);
+  $("log").scrollTop = $("log").scrollHeight;
+}
+function core(t, busy){ $("core").textContent = t; $("core").classList.toggle("busy", !!busy); }
+function speak(text){
+  if(!("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  speechSynthesis.speak(u);
+}
+function askKey(){
+  const k = prompt("Paste your Gemini API key:");
+  if(k){ store.set("jarvis_key", k.trim()); setStatus(); }
+  return store.get("jarvis_key", "");
+}
+
+// ===== Execute =====
+async function execute(){
+  const text = $("cmd").value.trim();
+  if(!text && !imageData) return;
+  let key = store.get("jarvis_key", "");
+  if(!key) key = askKey();
+  if(!key){ addMsg("API key required.", "err"); return; }
+
+  addMsg(text || "[image]", "me");
+  $("cmd").value = "";
+  core("PROCESSING", true);
+
+  const parts = [];
+  if(text) parts.push({text});
+  if(imageData) parts.push({inline_data:{mime_type:imageData.mime, data:imageData.data}});
+  const contents = history.concat([{role:"user", parts}]);
+
+  imageData = null; $("preview").style.display = "none";
+
+  try{
+    const res = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/" + MODEL + ":generateContent?key=" + encodeURIComponent(key),
+      { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ system_instruction:{parts:[{text:SYSTEM}]}, contents }) }
+    );
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error && data.error.message || ("HTTP " + res.status));
+    const reply = data.candidates && data.candidates[0] && data.candidates[0].content.parts.map(p => p.text || "").join("") || "(no response)";
+    addMsg(reply);
+    speak(reply);
+    // save only text to memory (images are too large for localStorage)
+    history.push({role:"user", parts:[{text: text || "[image]"}]});
+    history.push({role:"model", parts:[{text: reply}]});
+    history = history.slice(-40);
+    store.set("jarvis_history", history);
+  }catch(e){
+    addMsg("Error: " + e.message, "err");
+  }
+  core("SYSTEM READY", false);
+  setStatus();
+}
+
+// ===== Buttons =====
+$("execBtn").addEventListener("click", execute);
+$("cmd").addEventListener("keydown", e => { if(e.key === "Enter") execute(); });
+$("keyBtn").addEventListener("click", askKey);
+
+$("clearBtn").addEventListener("click", () => {
+  history = []; store.del("jarvis_history");
+  $("log").innerHTML = "";
+  setStatus();
+  addMsg("Memory cleared.");
+});
+
+// Camera / image
+$("camBtn").addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", e => {
+  const f = e.target.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    const url = r.result;
+    imageData = { mime: f.type, data: url.split(",")[1] };
+    $("preview").src = url; $("preview").style.display = "block";
+    if(!$("cmd").value) $("cmd").placeholder = "Ask something about this image";
+  };
+  r.readAsDataURL(f);
+});
+
+// Microphone
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if(!SR){ $("sVoice").textContent = "UNSUPPORTED"; $("sVoice").style.color = "#fa0"; }
+$("micBtn").addEventListener("click", () => {
+  if(!SR){ addMsg("Voice input is not supported in this browser. Use Chrome.", "err"); return; }
+  const rec = new SR();
+  rec.lang = "en-IN";   // change to "te-IN" for Telugu
+  rec.onstart = () => core("LISTENING", true);
+  rec.onresult = e => { $("cmd").value = e.results[0][0].transcript; execute(); };
+  rec.onerror = e => { addMsg("Mic error: " + e.error, "err"); core("SYSTEM READY", false); };
+  rec.onend = () => { if($("core").textContent === "LISTENING") core("SYSTEM READY", false); };
+  rec.start();
+});
+
+window.addEventListener("online", setStatus);
+window.addEventListener("offline", setStatus);
+setStatus();
+history.slice(-6).forEach(m => addMsg(m.parts[0].text, m.role === "user" ? "me" : ""));
+</script>
 </body>
 </html>
