@@ -141,7 +141,101 @@ async function runAgent(goal){
   const summaryPrompt='Goal: '+JSON.stringify(String(goal))+'. Tool results: '+JSON.stringify(results)+'. Give concise Telugu/English summary.';
   return await callGemini(summaryPrompt);
 }
+document.addEventListener("DOMContentLoaded", function () {
+  const $ = id => document.getElementById(id);
+  const chat = $("chat"), input = $("msg"), coreText = $("core-text");
+  const imgInput = $("img-input"), preview = $("preview");
+  const KEY = "jarvis_history";
 
+  // Optional: your own backend URL for AI replies (never put API keys here)
+  const AI_URL = "";
+
+  let hist = [];
+  try { hist = JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) {}
+
+  function add(who, text) {
+    const d = document.createElement("div");
+    d.className = "msg" + (who === "user" ? " user" : "");
+    d.textContent = text;
+    chat.appendChild(d);
+    chat.scrollTop = chat.scrollHeight;
+  }
+  function remember(who, text) {
+    hist.push([who, text]);
+    try { localStorage.setItem(KEY, JSON.stringify(hist.slice(-50))); } catch (e) {}
+  }
+  function reply(text) {
+    add("ai", text); remember("ai", text);
+    if ("speechSynthesis" in window) {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = /[\u0C00-\u0C7F]/.test(text) ? "te-IN" : "en-IN";
+      speechSynthesis.speak(u);
+    }
+  }
+
+  async function run(text) {
+    text = (text || "").trim();
+    if (!text) return;
+    add("user", text); remember("user", text);
+    input.value = "";
+    const t = text.toLowerCase();
+
+    if (t.includes("time")) reply("Ippudu " + new Date().toLocaleTimeString());
+    else if (t.includes("date")) reply("Ee roju " + new Date().toLocaleDateString());
+    else if (t.includes("open youtube")) { reply("YouTube open chestunnanu"); window.open("https://youtube.com", "_blank"); }
+    else if (t.includes("open google")) { reply("Google open chestunnanu"); window.open("https://google.com", "_blank"); }
+    else if (AI_URL) {
+      try {
+        const r = await fetch(AI_URL, { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, history: hist.slice(-10) }) });
+        const j = await r.json();
+        reply(j.reply || "Reply raaledu.");
+      } catch (e) { reply("AI server connect avvaledu."); }
+    }
+    else reply("Ee command naaku teliyadu. Try: time, date, open youtube, open google");
+  }
+
+  // EXECUTE
+  $("send").onclick = () => run(input.value);
+  input.addEventListener("keydown", e => { if (e.key === "Enter") run(input.value); });
+
+  // MIC
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  $("mic-btn").onclick = () => {
+    if (!SR) return reply("Ee browser lo mic support ledu. Chrome vaadandi.");
+    const rec = new SR();
+    rec.lang = "te-IN"; // English kosam "en-IN"
+    rec.onstart = () => { coreText.textContent = "LISTENING..."; };
+    rec.onresult = e => run(e.results[0][0].transcript);
+    rec.onerror = e => reply("Mic error: " + e.error);
+    rec.onend = () => { coreText.textContent = "SYSTEM READY"; };
+    rec.start();
+  };
+
+  // CAMERA / IMAGE: opens camera or gallery, then shows the photo
+  $("cam-btn").onclick = () => imgInput.click();
+  imgInput.onchange = () => {
+    const f = imgInput.files[0];
+    if (!f) return;
+    preview.src = URL.createObjectURL(f);
+    preview.style.display = "block";
+    reply("Image vachindi. Image analysis kosam AI connection kavali.");
+    imgInput.value = "";
+  };
+
+  // CLEAR MEMORY
+  $("clear-btn").onclick = () => {
+    hist = [];
+    localStorage.removeItem(KEY);
+    chat.innerHTML = "";
+    preview.style.display = "none";
+    reply("Memory clear ayyindi.");
+  };
+
+  hist.forEach(h => add(h[0], h[1]));
+  if (!hist.length) add("ai", "Jarvis ready. Command ivvandi.");
+});
 // ===== 4. GEMINI BRAIN =====
 async function callGemini(p){
   if(!API_KEY) throw new Error('Gemini API key is missing.');
