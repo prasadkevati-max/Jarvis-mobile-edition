@@ -1,4 +1,4 @@
-const CACHE='kalki-build-
+const CACHE='jarvis-build-
   log-v1';self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['./jarvis-build-
-                                                                                    log.html','./kalki-
+                                                                                    log.html','./jarvis-
                                                                                     logo.png']))));self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));
