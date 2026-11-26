@@ -1,5 +1,5 @@
 'use strict';
-// ===== J.A.R.V.I.S — script.js (final: fast streaming + phone actions) =====
+// ===== J.A.R.V.I.S — script.js (final: streaming + phone actions + local music) =====
 const GEMINI_MODELS = ['gemini-3.8-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 const SYSTEM_PROMPT = 'You are J.A.R.V.I.S, a friendly personal assistant for Prasshu. Reply in a warm Telugu-English mix. Keep answers short: 1-3 sentences unless asked for more. If you do not know, say so plainly.';
 const $ = id => document.getElementById(id);
@@ -22,8 +22,7 @@ function getKey(force) {
   return k;
 }
 
-// ===== 2. GEMINI (streaming) =====
-
+// ===== 2. GEMINI (streaming, auto model pick) =====
 let MODEL_CACHE = null;
 async function pickModels(key) {
   if (MODEL_CACHE) return MODEL_CACHE;
@@ -99,7 +98,6 @@ async function callGemini(contents, onChunk) {
       } catch (e) {
         if (e.fatal) throw e;
         lastMsg = model + ' → network: ' + (e.message || 'failed');
-        // streaming failed: try the normal (non-stream) call once
         try {
           const r2 = await fetch(base + model + ':generateContent', { method: 'POST', headers, body });
           const d2 = await r2.json().catch(() => ({}));
@@ -116,6 +114,7 @@ async function callGemini(contents, onChunk) {
   }
   throw new Error('Gemini అందుబాటులో లేదు. కారణం: ' + lastMsg);
 }
+
 // ===== 3. CHAT STORAGE =====
 let chats = [];
 let currentId = null;
@@ -240,9 +239,6 @@ async function handleTools(text) {
 
 // ===== 5.5 PHONE ACTIONS =====
 const enc = encodeURIComponent;
-function getContacts() {
-  try { return JSON.parse(localStorage.getItem('jarvis_contacts') || '{}'); } catch (e) { return {}; }
-}
 function intentUrl(action, extras) {
   return 'intent:#Intent;action=' + action + ';' + (extras || '') + 'end';
 }
@@ -251,19 +247,39 @@ function waNumber(n) {
   if (d.length === 10) d = '91' + d; // India default
   return d;
 }
+function getContacts() {
+  try { return JSON.parse(localStorage.getItem('jarvis_contacts') || '{}'); } catch (e) { return {}; }
+}
 const SITES = {
-  instagram: 'https://www.instagram.com', facebook: 'https://www.facebook.com',
-  telegram: 'https://web.telegram.org', gmail: 'https://mail.google.com',
-  spotify: 'https://open.spotify.com', twitter: 'https://x.com',
-  'play store': 'https://play.google.com/store', youtube: 'https://www.youtube.com',
-  maps: 'https://www.google.com/maps', google: 'https://www.google.com'
+  whatsapp: 'intent://send/#Intent;scheme=whatsapp;package=com.whatsapp;end',
+  instagram: 'instagram://app', facebook: 'fb://', telegram: 'tg://', spotify: 'spotify://',
+  twitter: 'twitter://', x: 'twitter://', snapchat: 'snapchat://', linkedin: 'linkedin://',
+  reddit: 'reddit://', pinterest: 'pinterest://', discord: 'discord://', netflix: 'nflx://',
+  hotstar: 'hotstar://', zomato: 'zomato://', swiggy: 'swiggy://', uber: 'uber://',
+  ola: 'olacabs://', phonepe: 'phonepe://', paytm: 'paytmmp://',
+  youtube: 'https://www.youtube.com', gmail: 'mailto:', email: 'mailto:',
+  maps: 'geo:0,0?q=', dialer: 'tel:', phone: 'tel:', messages: 'sms:', sms: 'sms:',
+  'play store': 'market://search?q=', playstore: 'market://search?q=',
+  amazon: 'https://www.amazon.in', flipkart: 'https://www.flipkart.com',
+  google: 'https://www.google.com', chrome: 'https://www.google.com',
+  'google pay': 'tez://', gpay: 'tez://'
 };
+const MUSIC_APPS = {
+  'youtube music': q => 'https://music.youtube.com/search?q=' + enc(q),
+  'spotify': q => 'spotify:search:' + enc(q),
+  'jiosaavn': q => 'https://www.jiosaavn.com/search/' + enc(q),
+  'gaana': q => 'https://gaana.com/search/' + enc(q)
+};
+function getMusicApp() {
+  const a = localStorage.getItem('jarvis_music');
+  return MUSIC_APPS[a] ? a : 'youtube music';
+}
 
 function parsePhoneAction(text) {
   const t = text.trim().toLowerCase();
   let m;
 
-  // Alarm: "set alarm for 6:30 am"
+  // Alarm
   if ((m = t.match(/\bset (?:an? )?alarm (?:for |at )?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/))) {
     let h = +m[1]; const min = +(m[2] || 0);
     if (m[3] === 'pm' && h < 12) h += 12;
@@ -271,13 +287,12 @@ function parsePhoneAction(text) {
     if (h > 23 || min > 59) return null;
     const hh = String(h).padStart(2, '0'), mm = String(min).padStart(2, '0');
     return {
-      reply: 'సరే Boss, ' + hh + ':' + mm + ' కి alarm సెట్ చేస్తున్నాను. కింద బటన్ నొక్కండి.',
+      reply: 'సరే Boss, ' + hh + ':' + mm + ' కి alarm. కింద బటన్ నొక్కండి.',
       label: 'Set alarm ' + hh + ':' + mm,
       url: intentUrl('android.intent.action.SET_ALARM', 'i.android.intent.extra.alarm.HOUR=' + h + ';i.android.intent.extra.alarm.MINUTES=' + min + ';S.android.intent.extra.alarm.MESSAGE=JARVIS;')
     };
   }
-
-  // Timer: "set timer for 10 minutes"
+  // Timer
   if ((m = t.match(/\bset (?:a )?timer (?:for )?(\d+)\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)/))) {
     const n = +m[1], u = m[2][0];
     const secs = u === 'h' ? n * 3600 : u === 'm' ? n * 60 : n;
@@ -287,14 +302,15 @@ function parsePhoneAction(text) {
       url: intentUrl('android.intent.action.SET_TIMER', 'i.android.intent.extra.alarm.LENGTH=' + secs + ';S.android.intent.extra.alarm.MESSAGE=JARVIS;')
     };
   }
-  // Save contact: "save contact amma 9876543210"
+
+  // Save contact
   if ((m = t.match(/^\s*save contact\s+([a-z ]{2,20}?)\s+(\+?\d[\d-]{5,})\s*$/))) {
     const c = getContacts();
     c[m[1].trim()] = m[2].replace(/[^\d+]/g, '');
     localStorage.setItem('jarvis_contacts', JSON.stringify(c));
     return { reply: m[1].trim() + ' contact సేవ్ అయింది Boss.' };
   }
-  // WhatsApp by name: "whatsapp amma good morning"
+  // WhatsApp by name
   if ((m = t.match(/^\s*whatsapp\s+([a-z]{2,20})\s+(?:saying\s+|that\s+)?(.+)$/))) {
     const num = getContacts()[m[1]];
     if (num) return {
@@ -303,31 +319,24 @@ function parsePhoneAction(text) {
       url: 'https://wa.me/' + waNumber(num) + '?text=' + enc(m[2])
     };
   }
-  // Call by name: "call amma"
-  if ((m = t.match(/^\s*call\s+([a-z ]{2,20})$/)) && getContacts()[m[1].trim()]) {
-    return { reply: m[1].trim() + ' కి dial చేస్తున్నాను Boss.', label: 'Call ' + m[1].trim(), url: 'tel:' + getContacts()[m[1].trim()] };
-  }
-  // WhatsApp message: "whatsapp 9876543210 hello"
+  // WhatsApp by number
   if ((m = t.match(/whatsapp\s+(?:to\s+)?(\+?\d[\d-]{5,})\s*(?:saying\s+|that\s+)?(.*)$/))) {
     const body = m[2] ? '?text=' + enc(m[2]) : '';
     return {
-      reply: 'WhatsApp లో chat తెరుస్తున్నాను Boss. Send నొక్కడం మీరే చేయాలి.',
+      reply: 'WhatsApp chat సిద్ధం Boss. Send మీరే నొక్కండి.',
       label: 'Open WhatsApp chat',
       url: 'https://wa.me/' + waNumber(m[1]) + body
     };
   }
-  if (/\bopen whatsapp\b/.test(t)) {
-    return { reply: 'WhatsApp తెరుస్తున్నాను Boss.', label: 'Open WhatsApp', url: 'whatsapp://send' };
-  }
-  // WhatsApp share: "whatsapp say good morning" (you pick the contact)
+  // WhatsApp share (you pick contact)
   if ((m = t.match(/^\s*whatsapp\s+(?:say\s+|send\s+)(.+)$/))) {
     return {
-      reply: 'WhatsApp లో message సిద్ధం Boss. Contact ని మీరే ఎంచుకోండి.',
+      reply: 'WhatsApp message సిద్ధం Boss. Contact ని మీరే ఎంచుకోండి.',
       label: 'Share on WhatsApp',
       url: 'https://wa.me/?text=' + enc(m[1])
     };
   }
-  // SMS: "sms 9876543210 hello"
+  // SMS
   if ((m = t.match(/\b(?:sms|text)\s+(\+?\d[\d-]{5,})\s+(?:saying\s+|that\s+)?(.+)$/))) {
     return {
       reply: 'SMS draft సిద్ధం Boss. Send మీరే నొక్కండి.',
@@ -335,13 +344,33 @@ function parsePhoneAction(text) {
       url: 'sms:' + m[1].replace(/[^\d+]/g, '') + '?body=' + enc(m[2])
     };
   }
-
-  // Call: "call 9876543210"
+  // Call by number
   if ((m = t.match(/\bcall\s+(\+?\d[\d\s-]{5,})/))) {
     return {
       reply: 'Dial చేస్తున్నాను Boss. Call button మీరే నొక్కండి.',
       label: 'Call ' + m[1].trim(),
       url: 'tel:' + m[1].replace(/[^\d+]/g, '')
+    };
+  }
+  // Call by name
+  if ((m = t.match(/^\s*call\s+([a-z ]{2,20})$/)) && getContacts()[m[1].trim()]) {
+    return { reply: m[1].trim() + ' కి dial చేస్తున్నాను Boss.', label: 'Call ' + m[1].trim(), url: 'tel:' + getContacts()[m[1].trim()] };
+  }
+
+  // Choose online music app
+  if ((m = t.match(/^\s*set music app\s+(.+?)\s*$/))) {
+    const name = m[1] === 'youtube' ? 'youtube music' : m[1];
+    if (!MUSIC_APPS[name]) return { reply: 'ఈ apps లో ఒకటి చెప్పండి Boss: ' + Object.keys(MUSIC_APPS).join(', ') + '.' };
+    localStorage.setItem('jarvis_music', name);
+    return { reply: 'Music app ' + name + ' గా సెట్ అయింది Boss.' };
+  }
+  // Play a song online
+  if (!/\bon youtube\b/.test(t) && (m = t.match(/^\s*play\s+(?:the\s+)?(?:song\s+)?(.+)$/))) {
+    const app = getMusicApp();
+    return {
+      reply: '"' + m[1] + '" ' + app + ' లో వెతుకుతున్నాను Boss. కింద బటన్ నొక్కండి.',
+      label: 'Play in ' + app,
+      url: MUSIC_APPS[app](m[1])
     };
   }
 
@@ -353,8 +382,7 @@ function parsePhoneAction(text) {
       url: 'https://www.youtube.com/results?search_query=' + enc(m[1])
     };
   }
-
-  // Maps navigation
+  // Maps
   if ((m = t.match(/\b(?:navigate|directions?|route)\s+to\s+(.+)/))) {
     return {
       reply: m[1] + ' కి దారి చూపిస్తున్నాను Boss.',
@@ -380,7 +408,7 @@ function parsePhoneAction(text) {
   if (/\bopen (?:the )?(?:phone )?settings\b/.test(t))
     return { reply: 'Settings తెరుస్తున్నాను Boss.', label: 'Open settings', url: intentUrl('android.settings.SETTINGS') };
 
-  // Google search: "google best laptops" / "search for best laptops"
+  // Google search
   if ((m = t.match(/^\s*(?:google|search(?: google)?(?: for)?)\s+(.+)/))) {
     return {
       reply: 'Google లో "' + m[1] + '" వెతుకుతున్నాను Boss.',
@@ -388,12 +416,10 @@ function parsePhoneAction(text) {
       url: 'https://www.google.com/search?q=' + enc(m[1])
     };
   }
-
-  // Open a site/app: "open instagram"
+  // Open an app or site
   if ((m = t.match(/^\s*open\s+(.+?)\s*$/)) && SITES[m[1]]) {
-    return { reply: m[1] + ' తెరుస్తున్నాను Boss.', label: 'Open ' + m[1], url: SITES[m[1]] };
+    return { reply: m[1] + ' తెరుస్తున్నాను Boss. కింద బటన్ నొక్కండి.', label: 'Open ' + m[1], url: SITES[m[1]] };
   }
-
   return null;
 }
 
@@ -405,7 +431,18 @@ function addActionLink(action) {
   a.href = action.url;
   if (/^https?:/.test(action.url)) { a.target = '_blank'; a.rel = 'noopener'; }
   a.textContent = action.label + ' ↗';
+  row.appendChild(document.createElement('br'));
   row.appendChild(a);
+  scrollDown();
+}
+function addActionButton(label, fn) {
+  const row = chatEl.lastElementChild;
+  if (!row) return;
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'action-link'; b.textContent = label;
+  b.onclick = fn;
+  row.appendChild(document.createElement('br'));
+  row.appendChild(b);
   scrollDown();
 }
 function openAction(url) {
@@ -413,6 +450,68 @@ function openAction(url) {
     if (/^https?:/.test(url)) window.open(url, '_blank', 'noopener');
     else window.location.href = url;
   } catch (e) {}
+}
+
+// ===== 5.7 LOCAL MUSIC (songs stored on your phone) =====
+const localInput = document.createElement('input');
+localInput.type = 'file'; localInput.accept = 'audio/*'; localInput.multiple = true; localInput.hidden = true;
+document.body.appendChild(localInput);
+const player = new Audio();
+let tracks = [], trackIdx = -1;
+const trackName = f => f.name.replace(/\.[^.]+$/, '');
+
+const barStyle = document.createElement('style');
+barStyle.textContent = '#music-bar{display:none;align-items:center;gap:8px;width:min(100%,820px);margin:0 auto 8px;padding:6px 12px;border:1px solid var(--border-strong);border-radius:999px;background:var(--panel);font-size:12px}#music-bar.on{display:flex}#music-bar span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#music-bar button{border:0;background:transparent;color:var(--accent);font-size:18px;padding:2px 6px}';
+document.head.appendChild(barStyle);
+const bar = document.createElement('div');
+bar.id = 'music-bar';
+bar.innerHTML = '<span id="music-title"></span><button id="mb-prev">⏮</button><button id="mb-play">⏯</button><button id="mb-next">⏭</button>';
+document.querySelector('.composer-dock').prepend(bar);
+
+function updateBar() {
+  bar.classList.toggle('on', trackIdx >= 0);
+  $('music-title').textContent = trackIdx >= 0 ? '♪ ' + trackName(tracks[trackIdx]) : '';
+}
+function playTrack(i) {
+  if (!tracks.length) return;
+  trackIdx = (i + tracks.length) % tracks.length;
+  if (player.src) URL.revokeObjectURL(player.src);
+  player.src = URL.createObjectURL(tracks[trackIdx]);
+  player.play().catch(() => {});
+  updateBar();
+}
+function togglePlay() { if (player.paused) player.play().catch(() => {}); else player.pause(); }
+player.onended = () => playTrack(trackIdx + 1);
+$('mb-prev').onclick = () => playTrack(trackIdx - 1);
+$('mb-next').onclick = () => playTrack(trackIdx + 1);
+$('mb-play').onclick = togglePlay;
+localInput.onchange = () => {
+  const files = Array.from(localInput.files || []).filter(f => /^audio\//.test(f.type) || /\.(mp3|m4a|aac|wav|ogg|opus|flac)$/i.test(f.name));
+  if (!files.length) return;
+  tracks = files;
+  playTrack(0);
+  addBubble('ai', files.length + ' పాటలు లోడ్ అయ్యాయి Boss. "play song <పేరు>", "next song", "pause music" అని చెప్పండి.');
+  localInput.value = '';
+};
+
+function parseLocalMusic(text) {
+  const t = text.trim().toLowerCase();
+  let m;
+  if (/^\s*(?:local music|my songs|phone songs|play local(?: music)?|play my songs)\s*$/.test(t)) {
+    if (tracks.length && /^\s*play/.test(t)) return { reply: 'మీ పాటలు ప్లే చేస్తున్నాను Boss.', run: () => playTrack(trackIdx < 0 ? 0 : trackIdx) };
+    return { reply: 'కింద బటన్ నొక్కి మీ phone లోని పాటలను ఎంచుకోండి Boss.', button: { label: 'Choose songs', fn: () => localInput.click() } };
+  }
+  if (!tracks.length) return null;
+  if (/^\s*(?:pause|stop)\s+(?:the\s+)?(?:music|song)\s*$/.test(t)) return { reply: 'ఆపేశాను Boss.', run: () => player.pause() };
+  if (/^\s*(?:resume|continue)\s+(?:the\s+)?(?:music|song)\s*$/.test(t)) return { reply: 'కొనసాగిస్తున్నాను Boss.', run: () => player.play().catch(() => {}) };
+  if (/^\s*next\s+(?:song|track)\s*$/.test(t)) return { reply: 'తర్వాతి పాట Boss.', run: () => playTrack(trackIdx + 1) };
+  if (/^\s*(?:previous|last)\s+(?:song|track)\s*$/.test(t)) return { reply: 'ముందు పాట Boss.', run: () => playTrack(trackIdx - 1) };
+  if (/^\s*shuffle\s*$/.test(t)) return { reply: 'Shuffle చేస్తున్నాను Boss.', run: () => playTrack(Math.floor(Math.random() * tracks.length)) };
+  if ((m = t.match(/^\s*play\s+(?:song\s+)?(.+)$/))) {
+    const i = tracks.findIndex(f => trackName(f).toLowerCase().includes(m[1]));
+    if (i >= 0) return { reply: '"' + trackName(tracks[i]) + '" ప్లే చేస్తున్నాను Boss.', run: () => playTrack(i) };
+  }
+  return null;
 }
 
 // ===== 6. SEND =====
@@ -451,8 +550,8 @@ async function send(speakReply) {
   setThinking(true, 'J.A.R.V.I.S is thinking');
   let reply, action = null, live = null;
   try {
-        const cmd = text.replace(/^\s*(?:(?:hey|hi|ok|okay)\s+)?(?:jarvis|prasshu)\b[\s,.:;!?-]*/i, '').trim();
-    action = img ? null : parsePhoneAction(cmd);
+    const cmd = text.replace(/^\s*(?:(?:hey|hi|ok|okay)\s+)?(?:jarvis|prasshu)\b[\s,.:;!?-]*/i, '').trim();
+    action = img ? null : (parseLocalMusic(cmd) || parsePhoneAction(cmd));
     const tool = (!img && text && !cmd) ? 'చెప్పండి Boss, వింటున్నాను.' : action ? action.reply : (img ? null : await handleTools(cmd));
     if (tool) {
       reply = tool;
@@ -478,7 +577,9 @@ async function send(speakReply) {
   saveChats();
   setThinking(false);
   busy = false;
-  if (action) { addActionLink(action); if (!speakReply) openAction(action.url); }
+  if (action && action.run) action.run();
+  else if (action && action.button) addActionButton(action.button.label, action.button.fn);
+  else if (action && action.url) { addActionLink(action); if (!speakReply) openAction(action.url); }
   if (speakReply || wakeOn) speakText(reply); else resumeWake();
 }
 
