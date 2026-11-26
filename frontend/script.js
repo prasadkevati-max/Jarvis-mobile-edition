@@ -240,6 +240,9 @@ async function handleTools(text) {
 
 // ===== 5.5 PHONE ACTIONS =====
 const enc = encodeURIComponent;
+function getContacts() {
+  try { return JSON.parse(localStorage.getItem('jarvis_contacts') || '{}'); } catch (e) { return {}; }
+}
 function intentUrl(action, extras) {
   return 'intent:#Intent;action=' + action + ';' + (extras || '') + 'end';
 }
@@ -284,7 +287,26 @@ function parsePhoneAction(text) {
       url: intentUrl('android.intent.action.SET_TIMER', 'i.android.intent.extra.alarm.LENGTH=' + secs + ';S.android.intent.extra.alarm.MESSAGE=JARVIS;')
     };
   }
-
+  // Save contact: "save contact amma 9876543210"
+  if ((m = t.match(/^\s*save contact\s+([a-z ]{2,20}?)\s+(\+?\d[\d-]{5,})\s*$/))) {
+    const c = getContacts();
+    c[m[1].trim()] = m[2].replace(/[^\d+]/g, '');
+    localStorage.setItem('jarvis_contacts', JSON.stringify(c));
+    return { reply: m[1].trim() + ' contact సేవ్ అయింది Boss.' };
+  }
+  // WhatsApp by name: "whatsapp amma good morning"
+  if ((m = t.match(/^\s*whatsapp\s+([a-z]{2,20})\s+(?:saying\s+|that\s+)?(.+)$/))) {
+    const num = getContacts()[m[1]];
+    if (num) return {
+      reply: m[1] + ' కి WhatsApp message సిద్ధం Boss. Send మీరే నొక్కండి.',
+      label: 'Open WhatsApp chat',
+      url: 'https://wa.me/' + waNumber(num) + '?text=' + enc(m[2])
+    };
+  }
+  // Call by name: "call amma"
+  if ((m = t.match(/^\s*call\s+([a-z ]{2,20})$/)) && getContacts()[m[1].trim()]) {
+    return { reply: m[1].trim() + ' కి dial చేస్తున్నాను Boss.', label: 'Call ' + m[1].trim(), url: 'tel:' + getContacts()[m[1].trim()] };
+  }
   // WhatsApp message: "whatsapp 9876543210 hello"
   if ((m = t.match(/whatsapp\s+(?:to\s+)?(\+?\d[\d-]{5,})\s*(?:saying\s+|that\s+)?(.*)$/))) {
     const body = m[2] ? '?text=' + enc(m[2]) : '';
