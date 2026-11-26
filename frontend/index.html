@@ -9,28 +9,7 @@
   <meta name="theme-color" content="#0b0d12">
   <meta name="description" content="J.A.R.V.I.S personal AI assistant">
   <title>J.A.R.V.I.S — Personal AI</title>
-
-  <link rel="stylesheet" href="style.css?v=jarvis-stage-grid-scroll-v8-20260930-final">
-
-  <style>
-    #jarvis-core-container{
-      width:150px;height:150px;margin:0 auto 20px auto;position:relative;
-      display:flex;justify-content:center;align-items:center;
-    }
-    .core-orb{
-      width:110px;height:110px;border-radius:50%;
-      background:radial-gradient(circle,#fff 0 6%,#52e9ff 14%,#1575c9 42%,transparent 70%);
-      box-shadow:0 0 30px rgba(0,255,255,.45),0 0 70px rgba(120,100,255,.35);
-      animation:coreOrbPulse 2.8s ease-in-out infinite;
-    }
-    .core-orb:before{
-      content:"";position:absolute;inset:18px;border-radius:50%;
-      border:1px solid rgba(82,233,255,.55);
-      animation:coreOrbSpin 8s linear infinite;
-    }
-    @keyframes coreOrbPulse{0%,100%{transform:scale(.93)}50%{transform:scale(1.06)}}
-    @keyframes coreOrbSpin{to{transform:rotate(360deg)}}
-  </style>
+  <link rel="stylesheet" href="style.css?v=final3">
 </head>
 <body>
   <div class="app-shell">
@@ -94,8 +73,19 @@
       <section class="conversation-stage" id="conversation-stage" aria-label="Conversation" tabindex="0">
         <div class="welcome" id="welcome">
 
-          <div id="jarvis-core-container" aria-hidden="true">
-            <div class="core-orb"></div>
+          <div class="hero-orb" aria-hidden="true">
+            <span class="orb-aura"></span>
+            <span class="orb-ring orb-ring-outer"></span>
+            <span class="orb-ring orb-ring-middle"></span>
+            <span class="orb-ring orb-ring-inner"></span>
+            <span class="orb-sweep"></span>
+            <span class="orb-scan"></span>
+            <span class="orb-particle orb-particle-one"></span>
+            <span class="orb-particle orb-particle-two"></span>
+            <span class="orb-particle orb-particle-three"></span>
+            <div class="orb-core">
+              <svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="20"/><circle class="core-orbit" cx="26" cy="26" r="13"/><path d="M26 8v36M8 26h36"/><circle class="core-point" cx="26" cy="26" r="4"/></svg>
+            </div>
           </div>
 
           <div class="welcome-copy">
@@ -154,6 +144,6 @@
     </aside>
   </div>
 
-  <script src="script.js?v=gemini38-wake-loop-20261007-r5"></script>
+  <script src="script.js?v=final3"></script>
 </body>
-                                                            </html>
+</html>
