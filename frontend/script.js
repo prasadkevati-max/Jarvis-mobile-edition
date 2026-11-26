@@ -1,5 +1,5 @@
 'use strict';
-// ===== J.A.R.V.I.S — script.js (final: streaming + phone actions + local music) =====
+// ===== J.A.R.V.I.S — script.js (final: fast voice + streaming + phone actions + local music) =====
 const GEMINI_MODELS = ['gemini-3.8-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 const SYSTEM_PROMPT = 'You are J.A.R.V.I.S, a friendly personal assistant for Prasshu. Reply in a warm Telugu-English mix. Keep answers short: 1-3 sentences unless asked for more. If you do not know, say so plainly.';
 const $ = id => document.getElementById(id);
@@ -611,7 +611,7 @@ imgInput.onchange = async () => {
   imgInput.value = '';
 };
 
-// ===== 8. VOICE + WAKE WORD =====
+// ===== 8. VOICE + WAKE WORD (fast) =====
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const WAKE = /\b(?:hey|hi|ok|okay)?\s*(?:jarvis|jarwis|service|prasshu)\b/i;
 let rec = null, recActive = false, recMode = 'manual', wakeOn = false, awaiting = false, speaking = false;
@@ -623,12 +623,14 @@ function updateWake() {
 function startRec(mode) {
   if (!rec || recActive) return;
   recMode = mode;
+  rec.continuous = (mode === 'wake');
+  rec.interimResults = (mode === 'manual');
   try { rec.start(); recActive = true; } catch (e) {}
   micBtn.classList.toggle('listening', mode === 'manual');
   updateWake();
 }
 function stopRec() { try { rec && rec.stop(); } catch (e) {} }
-function resumeWake() { if (wakeOn && !speaking && !busy) setTimeout(() => startRec('wake'), 400); }
+function resumeWake() { if (wakeOn && !speaking && !busy) setTimeout(() => startRec('wake'), 150); }
 function handleVoice(cmd) { input.value = cmd; send(true); }
 
 function onHeard(t) {
@@ -649,14 +651,17 @@ function onHeard(t) {
 if (SR) {
   rec = new SR();
   rec.lang = 'en-IN';
-  rec.continuous = true;
-  rec.interimResults = false;
+  rec.continuous = false;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
   rec.onresult = e => {
+    let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (!e.results[i].isFinal) continue;
       const t = (e.results[i][0].transcript || '').trim();
+      if (!e.results[i].isFinal) { interim += t + ' '; continue; }
       if (t) onHeard(t);
     }
+    if (interim && recMode === 'manual') input.value = interim.trim();
   };
   rec.onerror = e => {
     recActive = false; micBtn.classList.remove('listening');
