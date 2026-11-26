@@ -1,7 +1,7 @@
 'use strict';
-// ===== J.A.R.V.I.S — script.js (final, with phone actions) =====
-const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-2.5-flash'];
-const SYSTEM_PROMPT = 'You are J.A.R.V.I.S, a friendly personal assistant for Prasshu. Reply naturally in a warm Telugu-English mix, using clear concise language. If you do not know, say so plainly.';
+// ===== J.A.R.V.I.S — script.js (final: fast streaming + phone actions) =====
+const GEMINI_MODELS = ['gemini-3.8-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash'];
+const SYSTEM_PROMPT = 'You are J.A.R.V.I.S, a friendly personal assistant for Prasshu. Reply in a warm Telugu-English mix. Keep answers short: 1-3 sentences unless asked for more. If you do not know, say so plainly.';
 const $ = id => document.getElementById(id);
 
 const chatEl = $('chat');
@@ -22,31 +22,50 @@ function getKey(force) {
   return k;
 }
 
-// ===== 2. GEMINI =====
-async function callGemini(contents) {
+// ===== 2. GEMINI (streaming) =====
+async function callGemini(contents, onChunk) {
   const key = getKey();
   if (!key) throw new Error('API key లేదు. Page reload చేసి Gemini API key ఇవ్వండి.');
   let lastErr = null;
   for (const model of GEMINI_MODELS) {
-    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', {
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':streamGenerateContent?alt=sse', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({
         system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents
+        contents,
+        generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
       })
     });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok && !data.error) {
-      const text = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
-      if (text) return text;
-      lastErr = new Error('Gemini empty response ఇచ్చింది.');
-      continue;
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const msg = (Array.isArray(data) ? data[0]?.error?.message : data?.error?.message) || ('Gemini error ' + res.status);
+      if (res.status === 404) { lastErr = new Error(msg); continue; }
+      if ((res.status === 400 && /api key/i.test(msg)) || res.status === 403) localStorage.removeItem('jarvis_key');
+      throw new Error(msg);
     }
-    const msg = data?.error?.message || ('Gemini error ' + res.status);
-    if (res.status === 404) { lastErr = new Error(msg); continue; }
-    if ((res.status === 400 && /api key/i.test(msg)) || res.status === 403) localStorage.removeItem('jarvis_key');
-    throw new Error(msg);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', full = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        const j = line.slice(5).trim();
+        if (!j || j === '[DONE]') continue;
+        try {
+          const d = JSON.parse(j);
+          const p = (d.candidates?.[0]?.content?.parts || []).map(x => x.text || '').join('');
+          if (p) { full += p; if (onChunk) onChunk(full); }
+        } catch (e) {}
+      }
+    }
+    if (full.trim()) return full.trim();
+    lastErr = new Error('Gemini empty response ఇచ్చింది.');
   }
   throw lastErr || new Error('Gemini request failed.');
 }
@@ -355,17 +374,20 @@ async function send(speakReply) {
   renderHistory();
 
   setThinking(true, 'J.A.R.V.I.S is thinking');
-  let reply, action = null;
+  let reply, action = null, live = null;
   try {
     action = img ? null : parsePhoneAction(text);
     const tool = action ? action.reply : (img ? null : await handleTools(text));
     if (tool) {
       reply = tool;
     } else {
-      const history = chatObj.messages.slice(-21, -1).map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] }));
+      const history = chatObj.messages.slice(-7, -1).map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] }));
       const parts = [{ text: shown }];
       if (img) parts.push({ inline_data: { mime_type: img.mime, data: img.data } });
-      reply = await callGemini([...history, { role: 'user', parts }]);
+      reply = await callGemini([...history, { role: 'user', parts }], t => {
+        if (!live) { setThinking(false); live = addBubble('ai', t); }
+        else { live.innerHTML = fmt(t); scrollDown(); }
+      });
     }
   } catch (e) {
     reply = 'SYSTEM: ' + (e.message || 'Something went wrong.');
@@ -375,7 +397,8 @@ async function send(speakReply) {
     return;
   }
   chatObj.messages.push({ role: 'model', text: reply });
-  addBubble('ai', reply);
+  if (live) { live.innerHTML = fmt(reply); scrollDown(); }
+  else addBubble('ai', reply);
   saveChats();
   setThinking(false);
   busy = false;
