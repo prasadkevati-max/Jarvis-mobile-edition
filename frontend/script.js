@@ -23,28 +23,56 @@ function getKey(force) {
 }
 
 // ===== 2. GEMINI (streaming) =====
+
+let MODEL_CACHE = null;
+async function pickModels(key) {
+  if (MODEL_CACHE) return MODEL_CACHE;
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', { headers: { 'x-goog-api-key': key } });
+    if (r.ok) {
+      const d = await r.json();
+      const live = (d.models || [])
+        .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+        .map(m => m.name.replace('models/', ''));
+      const flash = live
+        .filter(n => /flash/.test(n) && !/(image|tts|live|audio|thinking|exp|embedding|robotics|computer)/.test(n))
+        .sort((a, b) => (/lite/.test(b) ? 1 : 0) - (/lite/.test(a) ? 1 : 0));
+      const extra = GEMINI_MODELS.filter(n => live.includes(n) && !flash.includes(n));
+      const ordered = [...flash, ...extra];
+      if (ordered.length) { MODEL_CACHE = ordered.slice(0, 5); return MODEL_CACHE; }
+    }
+  } catch (e) {}
+  return GEMINI_MODELS;
+}
+
 async function callGemini(contents, onChunk) {
   const key = getKey();
   if (!key) throw new Error('API key లేదు. Page reload చేసి Gemini API key ఇవ్వండి.');
+  const models = await pickModels(key);
+  const body = JSON.stringify({
+    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents,
+    generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
+  });
+  const headers = { 'Content-Type': 'application/json', 'x-goog-api-key': key };
+  const base = 'https://generativelanguage.googleapis.com/v1beta/models/';
   const RETRY = [404, 429, 500, 502, 503, 504];
+  let lastMsg = '';
+
   for (let round = 0; round < 2; round++) {
-    for (const model of GEMINI_MODELS) {
+    for (const model of models) {
       try {
-        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':streamGenerateContent?alt=sse', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-            contents,
-            generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
-          })
-        });
+        const res = await fetch(base + model + ':streamGenerateContent?alt=sse', { method: 'POST', headers, body });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          const msg = (Array.isArray(data) ? data[0]?.error?.message : data?.error?.message) || ('Gemini error ' + res.status);
+          const msg = (Array.isArray(data) ? data[0]?.error?.message : data?.error?.message) || 'error';
+          lastMsg = model + ' → ' + res.status + ': ' + msg;
           if (RETRY.includes(res.status)) continue;
-          if ((res.status === 400 && /api key/i.test(msg)) || res.status === 403) localStorage.removeItem('jarvis_key');
-          const fatal = new Error(msg); fatal.fatal = true; throw fatal;
+          if ((res.status === 400 && /api key/i.test(msg)) || res.status === 403) {
+            localStorage.removeItem('jarvis_key');
+            MODEL_CACHE = null;
+          }
+          const fatal = new Error(lastMsg); fatal.fatal = true; throw fatal;
         }
         const reader = res.body.getReader();
         const dec = new TextDecoder();
@@ -67,16 +95,27 @@ async function callGemini(contents, onChunk) {
           }
         }
         if (full.trim()) return full.trim();
+        lastMsg = model + ' → empty response';
       } catch (e) {
         if (e.fatal) throw e;
-        // network error or busy model: try the next model
+        lastMsg = model + ' → network: ' + (e.message || 'failed');
+        // streaming failed: try the normal (non-stream) call once
+        try {
+          const r2 = await fetch(base + model + ':generateContent', { method: 'POST', headers, body });
+          const d2 = await r2.json().catch(() => ({}));
+          if (r2.ok) {
+            const t2 = (d2.candidates?.[0]?.content?.parts || []).map(x => x.text || '').join('').trim();
+            if (t2) { if (onChunk) onChunk(t2); return t2; }
+          } else {
+            lastMsg = model + ' → ' + r2.status + ': ' + (d2?.error?.message || 'error');
+          }
+        } catch (e2) { lastMsg = model + ' → network: ' + (e2.message || 'failed'); }
       }
     }
     await new Promise(r => setTimeout(r, 1500));
   }
-  throw new Error('Gemini ఇప్పుడు busy గా ఉంది లేదా internet సమస్య ఉంది. కొన్ని సెకన్లలో మళ్ళీ try చేయండి.');
+  throw new Error('Gemini అందుబాటులో లేదు. కారణం: ' + lastMsg);
 }
-
 // ===== 3. CHAT STORAGE =====
 let chats = [];
 let currentId = null;
