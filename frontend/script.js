@@ -559,10 +559,48 @@ async function send(speakReply) {
       const history = chatObj.messages.slice(-7, -1).map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] }));
       const parts = [{ text: shown }];
       if (img) parts.push({ inline_data: { mime_type: img.mime, data: img.data } });
-      reply = await callGemini([...history, { role: 'user', parts }], t => {
-        if (!live) { setThinking(false); live = addBubble('ai', t); }
-        else { live.innerHTML = fmt(t); scrollDown(); }
-      });
+      try {
+  reply = await callGemini(
+    [...history, { role: 'user', parts }],
+    t => {
+      if (!live) {
+        setThinking(false);
+        live = addBubble('ai', t);
+      } else {
+        live.innerHTML = fmt(t);
+        scrollDown();
+      }
+    }
+  );
+
+} catch (geminiError) {
+  console.log('Gemini failed. Starting Offline AI...');
+
+  if (live) {
+    live.remove();
+    live = null;
+  }
+
+  if (img) {
+    throw new Error('Offline image analysis ఇంకా అందుబాటులో లేదు.');
+  }
+
+  setThinking(true, 'PRASSHU Offline AI Loading...');
+
+  if (typeof askOfflineAI !== 'function') {
+    throw new Error('Offline AI module అందుబాటులో లేదు.');
+  }
+
+  reply = await askOfflineAI(shown);
+
+  if (!reply || !String(reply).trim()) {
+    throw new Error('Offline AI response రాలేదు.');
+  }
+
+  reply = String(reply).trim();
+
+  console.log('PRASSHU OFFLINE AI READY');
+}
     }
   } catch (e) {
     reply = 'SYSTEM: ' + (e.message || 'Something went wrong.');
