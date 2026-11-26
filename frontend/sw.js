@@ -1,12 +1,12 @@
 'use strict';
 
-const CACHE_NAME = 'prasshu-jarvis-v2';
-
+const CACHE_NAME = 'prasshu-jarvis-v3';
 const FILES = [
   './',
   './index.html',
   './style.css',
-  './script.js'
+  './script.js',
+  './offline-ai.js'
 ];
 
 // INSTALL
