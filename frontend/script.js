@@ -1,32 +1,16 @@
 'use strict';
-// ===== J.A.R.V.I.S — script.js (clean rebuild) =====
+// ===== J.A.R.V.I.S — script.js (final, with phone actions) =====
 const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-2.5-flash'];
 const SYSTEM_PROMPT = 'You are J.A.R.V.I.S, a friendly personal assistant for Prasshu. Reply naturally in a warm Telugu-English mix, using clear concise language. If you do not know, say so plainly.';
 const $ = id => document.getElementById(id);
 
-const chatEl = $('chat'), stage = $('conversation-stage'), welcome = $('welcome');
+const chatEl = $('chat');
 const input = $('msg'), sendBtn = $('send'), micBtn = $('mic-btn'), camBtn = $('cam-btn');
 const imgInput = $('img-input'), clearBtn = $('clear-btn'), newChatBtn = $('new-chat');
 const historyList = $('history-list'), historyCount = $('history-count');
 const sidebar = $('sidebar'), backdrop = $('sidebar-backdrop');
 const wakeBtn = $('wake-btn'), wakeStatus = $('wake-status');
 const thinking = $('thinking-status'), thinkingLabel = $('thinking-label');
-
-// ----- small style for message bubbles (works with any theme) -----
-const st = document.createElement('style');
-st.textContent = `
-.jv-msg{display:flex;margin:10px 0;padding:0 4px}
-.jv-msg.jv-user{justify-content:flex-end}
-.jv-bubble{max-width:85%;padding:10px 14px;border-radius:16px;line-height:1.55;word-wrap:break-word;overflow-wrap:anywhere;background:rgba(128,128,128,.14)}
-.jv-user .jv-bubble{background:rgba(124,92,255,.28)}
-.jv-bubble code{background:rgba(128,128,128,.25);padding:1px 5px;border-radius:5px}
-.jv-bubble img{max-width:100%;border-radius:10px;display:block;margin-bottom:6px}
-.history-item{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;text-align:left;background:none;border:0;color:inherit;padding:9px 10px;border-radius:10px;cursor:pointer;font:inherit;font-size:.85rem}
-.history-item:hover,.history-item.active{background:rgba(128,128,128,.18)}
-.history-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-.history-del{opacity:.6;padding:0 6px}
-`;
-document.head.appendChild(st);
 
 // ===== 1. API KEY =====
 function getKey(force) {
@@ -61,7 +45,7 @@ async function callGemini(contents) {
     }
     const msg = data?.error?.message || ('Gemini error ' + res.status);
     if (res.status === 404) { lastErr = new Error(msg); continue; }
-    if (res.status === 400 && /api key/i.test(msg) || res.status === 403) localStorage.removeItem('jarvis_key');
+    if ((res.status === 400 && /api key/i.test(msg)) || res.status === 403) localStorage.removeItem('jarvis_key');
     throw new Error(msg);
   }
   throw lastErr || new Error('Gemini request failed.');
@@ -79,11 +63,19 @@ function saveChats() {
 }
 function currentChat() { return chats.find(c => c.id === currentId); }
 function newChat() {
-  const c = { id: 'c' + Date.now(), title: 'New chat', messages: [], ts: Date.now() };
-  chats.unshift(c);
-  currentId = c.id;
+  const existing = chats.find(c => c.messages.length === 0);
+  if (existing) { currentId = existing.id; }
+  else {
+    const c = { id: 'c' + Date.now(), title: 'New chat', messages: [], ts: Date.now() };
+    chats.unshift(c);
+    currentId = c.id;
+  }
   saveChats(); renderHistory(); renderChat();
-  return c;
+  return currentChat();
+}
+function updateConvClass() {
+  const c = currentChat();
+  document.body.classList.toggle('has-conversation', !!(c && c.messages.length));
 }
 
 // ===== 4. RENDER =====
@@ -91,46 +83,51 @@ function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 function fmt(s) {
-  return esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
+  return esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>');
 }
+function scrollDown() { chatEl.scrollTop = chatEl.scrollHeight; }
 function addBubble(role, text, imgSrc) {
   const row = document.createElement('div');
-  row.className = 'jv-msg ' + (role === 'user' ? 'jv-user' : 'jv-ai');
-  const b = document.createElement('div');
-  b.className = 'jv-bubble';
-  b.innerHTML = (imgSrc ? '<img src="' + imgSrc + '" alt="attached image">' : '') + fmt(text);
-  row.appendChild(b);
+  row.className = 'msg ' + (role === 'user' ? 'user' : 'ai');
+  row.innerHTML = (imgSrc ? '<img src="' + imgSrc + '" alt="attached image">' : '') + fmt(text);
   chatEl.appendChild(row);
-  stage.scrollTop = stage.scrollHeight;
+  document.body.classList.add('has-conversation');
+  scrollDown();
   return row;
 }
 function renderChat() {
   chatEl.innerHTML = '';
   const c = currentChat();
-  const has = c && c.messages.length > 0;
-  welcome.style.display = has ? 'none' : '';
-  if (has) c.messages.forEach(m => addBubble(m.role === 'user' ? 'user' : 'ai', m.text));
-  stage.scrollTop = stage.scrollHeight;
+  if (c) c.messages.forEach(m => addBubble(m.role === 'user' ? 'user' : 'ai', m.text));
+  updateConvClass();
+  scrollDown();
 }
+const CHAT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg>';
 function renderHistory() {
   historyList.innerHTML = '';
   const list = chats.filter(c => c.messages.length > 0);
   historyCount.textContent = list.length ? String(list.length) : '';
+  if (!list.length) {
+    const e = document.createElement('div');
+    e.className = 'history-empty';
+    e.textContent = 'No chats yet';
+    historyList.appendChild(e);
+    return;
+  }
   list.forEach(c => {
-    const item = document.createElement('div');
-    item.className = 'history-item' + (c.id === currentId ? ' active' : '');
-    item.setAttribute('role', 'button');
-    item.tabIndex = 0;
-    const t = document.createElement('span'); t.textContent = c.title;
-    const del = document.createElement('span'); del.className = 'history-del'; del.textContent = '×'; del.title = 'Delete';
-    del.onclick = e => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'history-item';
+    if (c.id === currentId) item.setAttribute('aria-current', 'true');
+    item.innerHTML = CHAT_ICON + '<span class="history-item-label"></span><span class="history-del" title="Delete">×</span>';
+    item.querySelector('.history-item-label').textContent = c.title;
+    item.querySelector('.history-del').onclick = e => {
       e.stopPropagation();
       chats = chats.filter(x => x.id !== c.id);
-      if (currentId === c.id) { currentId = null; chats.length ? currentId = chats[0].id : newChat(); }
+      if (currentId === c.id) { currentId = null; chats.length ? (currentId = chats[0].id) : newChat(); }
       saveChats(); renderHistory(); renderChat();
     };
     item.onclick = () => { currentId = c.id; renderHistory(); renderChat(); setSidebar(false); };
-    item.append(t, del);
     historyList.appendChild(item);
   });
 }
@@ -176,6 +173,154 @@ async function handleTools(text) {
   return null;
 }
 
+// ===== 5.5 PHONE ACTIONS =====
+const enc = encodeURIComponent;
+function intentUrl(action, extras) {
+  return 'intent:#Intent;action=' + action + ';' + (extras || '') + 'end';
+}
+function waNumber(n) {
+  let d = String(n).replace(/[^\d]/g, '');
+  if (d.length === 10) d = '91' + d; // India default
+  return d;
+}
+const SITES = {
+  instagram: 'https://www.instagram.com', facebook: 'https://www.facebook.com',
+  telegram: 'https://web.telegram.org', gmail: 'https://mail.google.com',
+  spotify: 'https://open.spotify.com', twitter: 'https://x.com',
+  'play store': 'https://play.google.com/store', youtube: 'https://www.youtube.com',
+  maps: 'https://www.google.com/maps', google: 'https://www.google.com'
+};
+
+function parsePhoneAction(text) {
+  const t = text.trim().toLowerCase();
+  let m;
+
+  // Alarm: "set alarm for 6:30 am"
+  if ((m = t.match(/\bset (?:an? )?alarm (?:for |at )?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/))) {
+    let h = +m[1]; const min = +(m[2] || 0);
+    if (m[3] === 'pm' && h < 12) h += 12;
+    if (m[3] === 'am' && h === 12) h = 0;
+    if (h > 23 || min > 59) return null;
+    const hh = String(h).padStart(2, '0'), mm = String(min).padStart(2, '0');
+    return {
+      reply: 'సరే Boss, ' + hh + ':' + mm + ' కి alarm సెట్ చేస్తున్నాను. కింద బటన్ నొక్కండి.',
+      label: 'Set alarm ' + hh + ':' + mm,
+      url: intentUrl('android.intent.action.SET_ALARM', 'i.android.intent.extra.alarm.HOUR=' + h + ';i.android.intent.extra.alarm.MINUTES=' + min + ';S.android.intent.extra.alarm.MESSAGE=JARVIS;')
+    };
+  }
+
+  // Timer: "set timer for 10 minutes"
+  if ((m = t.match(/\bset (?:a )?timer (?:for )?(\d+)\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)/))) {
+    const n = +m[1], u = m[2][0];
+    const secs = u === 'h' ? n * 3600 : u === 'm' ? n * 60 : n;
+    return {
+      reply: 'సరే Boss, ' + n + ' ' + m[2] + ' timer. కింద బటన్ నొక్కండి.',
+      label: 'Start timer',
+      url: intentUrl('android.intent.action.SET_TIMER', 'i.android.intent.extra.alarm.LENGTH=' + secs + ';S.android.intent.extra.alarm.MESSAGE=JARVIS;')
+    };
+  }
+
+  // WhatsApp message: "whatsapp 9876543210 hello"
+  if ((m = t.match(/whatsapp\s+(?:to\s+)?(\+?\d[\d-]{5,})\s*(?:saying\s+|that\s+)?(.*)$/))) {
+    const body = m[2] ? '?text=' + enc(m[2]) : '';
+    return {
+      reply: 'WhatsApp లో chat తెరుస్తున్నాను Boss. Send నొక్కడం మీరే చేయాలి.',
+      label: 'Open WhatsApp chat',
+      url: 'https://wa.me/' + waNumber(m[1]) + body
+    };
+  }
+  if (/\bopen whatsapp\b/.test(t)) {
+    return { reply: 'WhatsApp తెరుస్తున్నాను Boss.', label: 'Open WhatsApp', url: 'whatsapp://send' };
+  }
+
+  // SMS: "sms 9876543210 hello"
+  if ((m = t.match(/\b(?:sms|text)\s+(\+?\d[\d-]{5,})\s+(?:saying\s+|that\s+)?(.+)$/))) {
+    return {
+      reply: 'SMS draft సిద్ధం Boss. Send మీరే నొక్కండి.',
+      label: 'Open SMS',
+      url: 'sms:' + m[1].replace(/[^\d+]/g, '') + '?body=' + enc(m[2])
+    };
+  }
+
+  // Call: "call 9876543210"
+  if ((m = t.match(/\bcall\s+(\+?\d[\d\s-]{5,})/))) {
+    return {
+      reply: 'Dial చేస్తున్నాను Boss. Call button మీరే నొక్కండి.',
+      label: 'Call ' + m[1].trim(),
+      url: 'tel:' + m[1].replace(/[^\d+]/g, '')
+    };
+  }
+
+  // YouTube
+  if ((m = t.match(/(?:search|play)\s+(.+?)\s+(?:on|in)\s+youtube/) || t.match(/youtube\s+(?:search|play)\s+(.+)/))) {
+    return {
+      reply: 'YouTube లో "' + m[1] + '" వెతుకుతున్నాను Boss.',
+      label: 'Open YouTube results',
+      url: 'https://www.youtube.com/results?search_query=' + enc(m[1])
+    };
+  }
+
+  // Maps navigation
+  if ((m = t.match(/\b(?:navigate|directions?|route)\s+to\s+(.+)/))) {
+    return {
+      reply: m[1] + ' కి దారి చూపిస్తున్నాను Boss.',
+      label: 'Open Maps',
+      url: 'https://www.google.com/maps/dir/?api=1&destination=' + enc(m[1])
+    };
+  }
+  if ((m = t.match(/\b(?:show|find|search)\s+(.+?)\s+(?:on|in)\s+maps?/))) {
+    return {
+      reply: 'Maps లో "' + m[1] + '" వెతుకుతున్నాను Boss.',
+      label: 'Open Maps',
+      url: 'https://www.google.com/maps/search/?api=1&query=' + enc(m[1])
+    };
+  }
+
+  // Phone apps / settings
+  if (/\bopen (?:the )?camera\b/.test(t))
+    return { reply: 'Camera తెరుస్తున్నాను Boss.', label: 'Open camera', url: intentUrl('android.media.action.STILL_IMAGE_CAMERA') };
+  if (/\bopen (?:the )?wi-?fi\b/.test(t))
+    return { reply: 'WiFi settings తెరుస్తున్నాను Boss.', label: 'WiFi settings', url: intentUrl('android.settings.WIFI_SETTINGS') };
+  if (/\bopen (?:the )?bluetooth\b/.test(t))
+    return { reply: 'Bluetooth settings తెరుస్తున్నాను Boss.', label: 'Bluetooth settings', url: intentUrl('android.settings.BLUETOOTH_SETTINGS') };
+  if (/\bopen (?:the )?(?:phone )?settings\b/.test(t))
+    return { reply: 'Settings తెరుస్తున్నాను Boss.', label: 'Open settings', url: intentUrl('android.settings.SETTINGS') };
+
+  // Google search: "google best laptops" / "search for best laptops"
+  if ((m = t.match(/^\s*(?:google|search(?: google)?(?: for)?)\s+(.+)/))) {
+    return {
+      reply: 'Google లో "' + m[1] + '" వెతుకుతున్నాను Boss.',
+      label: 'Open Google search',
+      url: 'https://www.google.com/search?q=' + enc(m[1])
+    };
+  }
+
+  // Open a site/app: "open instagram"
+  if ((m = t.match(/^\s*open\s+(.+?)\s*$/)) && SITES[m[1]]) {
+    return { reply: m[1] + ' తెరుస్తున్నాను Boss.', label: 'Open ' + m[1], url: SITES[m[1]] };
+  }
+
+  return null;
+}
+
+function addActionLink(action) {
+  const row = chatEl.lastElementChild;
+  if (!row) return;
+  const a = document.createElement('a');
+  a.className = 'action-link';
+  a.href = action.url;
+  if (/^https?:/.test(action.url)) { a.target = '_blank'; a.rel = 'noopener'; }
+  a.textContent = action.label + ' ↗';
+  row.appendChild(a);
+  scrollDown();
+}
+function openAction(url) {
+  try {
+    if (/^https?:/.test(url)) window.open(url, '_blank', 'noopener');
+    else window.location.href = url;
+  } catch (e) {}
+}
+
 // ===== 6. SEND =====
 let busy = false;
 let pendingImage = null; // { data, mime, preview }
@@ -200,8 +345,8 @@ async function send(speakReply) {
   const chatObj = currentChat() || newChat();
   const img = pendingImage; pendingImage = null;
   camBtn.style.opacity = '';
+  input.placeholder = 'Message J.A.R.V.I.S...';
   input.value = ''; autosize();
-  welcome.style.display = 'none';
 
   const shown = text || 'Analyze this image';
   addBubble('user', shown, img && img.preview);
@@ -210,9 +355,10 @@ async function send(speakReply) {
   renderHistory();
 
   setThinking(true, 'J.A.R.V.I.S is thinking');
-  let reply;
+  let reply, action = null;
   try {
-    const tool = img ? null : await handleTools(text);
+    action = img ? null : parsePhoneAction(text);
+    const tool = action ? action.reply : (img ? null : await handleTools(text));
     if (tool) {
       reply = tool;
     } else {
@@ -233,6 +379,7 @@ async function send(speakReply) {
   saveChats();
   setThinking(false);
   busy = false;
+  if (action) { addActionLink(action); if (!speakReply) openAction(action.url); }
   if (speakReply || wakeOn) speakText(reply); else resumeWake();
 }
 
@@ -266,7 +413,7 @@ imgInput.onchange = async () => {
 
 // ===== 8. VOICE + WAKE WORD =====
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const WAKE = /\b(?:hey|hi|ok|okay)?\s*(?:jarvis|jarvis|jarwis|service)\b/i;
+const WAKE = /\b(?:hey|hi|ok|okay)?\s*(?:jarvis|jarwis|service)\b/i;
 let rec = null, recActive = false, recMode = 'manual', wakeOn = false, awaiting = false, speaking = false;
 
 function updateWake() {
@@ -357,7 +504,6 @@ function speakText(text) {
 // ===== 9. SIDEBAR, SETTINGS, THEME =====
 function setSidebar(open) {
   sidebar.classList.toggle('open', open);
-  document.body.classList.toggle('sidebar-open', open);
   backdrop.hidden = !open;
 }
 $('menu-btn').onclick = () => setSidebar(true);
@@ -371,13 +517,16 @@ function openSettings(open) {
   $('settings-panel').hidden = !open;
   $('settings-scrim').hidden = !open;
 }
-$('settings-open').onclick = () => openSettings(true);
+$('settings-open').onclick = () => { openSettings(true); setSidebar(false); };
 $('settings-close').onclick = () => openSettings(false);
 $('settings-scrim').onclick = () => openSettings(false);
 
 const themeSelect = $('theme-select');
 const savedTheme = localStorage.getItem('jarvis_theme');
-if (savedTheme) { document.documentElement.dataset.theme = savedTheme; themeSelect.value = savedTheme; }
+if (savedTheme === 'dark' || savedTheme === 'light') {
+  document.documentElement.dataset.theme = savedTheme;
+  themeSelect.value = savedTheme;
+}
 themeSelect.onchange = () => {
   document.documentElement.dataset.theme = themeSelect.value;
   localStorage.setItem('jarvis_theme', themeSelect.value);
