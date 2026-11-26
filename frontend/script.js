@@ -258,7 +258,14 @@ function parsePhoneAction(text) {
   if (/\bopen whatsapp\b/.test(t)) {
     return { reply: 'WhatsApp తెరుస్తున్నాను Boss.', label: 'Open WhatsApp', url: 'whatsapp://send' };
   }
-
+  // WhatsApp share: "whatsapp say good morning" (you pick the contact)
+  if ((m = t.match(/^\s*whatsapp\s+(?:say\s+|send\s+)(.+)$/))) {
+    return {
+      reply: 'WhatsApp లో message సిద్ధం Boss. Contact ని మీరే ఎంచుకోండి.',
+      label: 'Share on WhatsApp',
+      url: 'https://wa.me/?text=' + enc(m[1])
+    };
+  }
   // SMS: "sms 9876543210 hello"
   if ((m = t.match(/\b(?:sms|text)\s+(\+?\d[\d-]{5,})\s+(?:saying\s+|that\s+)?(.+)$/))) {
     return {
