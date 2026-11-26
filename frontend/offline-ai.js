@@ -23,6 +23,8 @@ async function loadOfflineAI() {
       );
 
     env.allowRemoteModels = true;
+env.useBrowserCache = true;
+env.useWasmCache = true;
 
     offlineModel = await pipeline(
       'text-generation',
