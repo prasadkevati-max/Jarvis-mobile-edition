@@ -147,5 +147,19 @@
 
     <script src="./offline-ai.js"></script>
   <script type="module" src="script.js?v=final8"></script>
+    <!-- PRASSHU FILE ACCESS -->
+<div id="folderAccessPanel" style="padding:10px;text-align:center">
+  <button id="selectFolderBtn">
+    📁 Select Internal Storage Folder
+  </button>
+  <input
+    type="file"
+    id="folderInput"
+    webkitdirectory
+    multiple
+    hidden
+  >
+  <p id="folderStatus">No folder selected</p>
+</div>
 </body>
 </html>
