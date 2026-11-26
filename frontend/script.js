@@ -752,8 +752,19 @@ function speakText(text) {
   speaking = true;
   const done = () => { speaking = false; resumeWake(); };
   u.onend = done; u.onerror = done;
-  window.speechSynthesis.speak(u);
-}
+  window.speechSynthesis.speak(u);}
+  // PRASSHU AUTO WAKE
+setTimeout(() => {
+  if (!rec) return;
+
+  wakeOn = true;
+  awaiting = false;
+  updateWake();
+  startRec('wake');
+
+  console.log('PRASSHU AUTO WAKE STARTED');
+}, 1500);
+
 
 // ===== 9. SIDEBAR, SETTINGS, THEME =====
 function setSidebar(open) {
