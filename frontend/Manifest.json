@@ -1,1 +1,13 @@
-{"name":"PRASSHU Personal AI Assistant","short_name":"prasshu","start_url":"./jarvis-build-log.html","display":"standalone","background_color":"#07101b","theme_color":"#07101b","icons":[{"src":"prasshu-logo.png","sizes":"192x192","type":"image/png"}]}
+{
+  "name": "J.A.R.V.I.S Personal AI",
+  "short_name": "JARVIS",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0d12",
+  "theme_color": "#0b0d12",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
