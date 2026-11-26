@@ -446,10 +446,11 @@ function addActionButton(label, fn) {
   scrollDown();
 }
 function openAction(url) {
-  try {
-    if (/^https?:/.test(url)) window.open(url, '_blank', 'noopener');
-    else window.location.href = url;
-  } catch (e) {}
+  if (/^https?:/.test(url)) {
+    window.location.href = url;
+  } else {
+    window.location.href = url;
+  }
 }
 
 // ===== 5.7 LOCAL MUSIC (songs stored on your phone) =====
@@ -617,7 +618,9 @@ async function send(speakReply) {
   busy = false;
   if (action && action.run) action.run();
   else if (action && action.button) addActionButton(action.button.label, action.button.fn);
-  else if (action && action.url) { addActionLink(action); if (!speakReply) openAction(action.url); }
+  else if (action && action.url) {
+  openAction(action.url);
+  }
   if (speakReply || wakeOn) speakText(reply); else resumeWake();
 }
 
