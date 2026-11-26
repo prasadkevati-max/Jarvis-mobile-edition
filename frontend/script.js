@@ -251,18 +251,29 @@ function getContacts() {
   try { return JSON.parse(localStorage.getItem('jarvis_contacts') || '{}'); } catch (e) { return {}; }
 }
 const SITES = {
-  whatsapp: 'intent://send/#Intent;scheme=whatsapp;package=com.whatsapp;end',
-  instagram: 'instagram://app', facebook: 'fb://', telegram: 'tg://', spotify: 'spotify://',
-  twitter: 'twitter://', x: 'twitter://', snapchat: 'snapchat://', linkedin: 'linkedin://',
-  reddit: 'reddit://', pinterest: 'pinterest://', discord: 'discord://', netflix: 'nflx://',
-  hotstar: 'hotstar://', zomato: 'zomato://', swiggy: 'swiggy://', uber: 'uber://',
-  ola: 'olacabs://', phonepe: 'phonepe://', paytm: 'paytmmp://',
-  youtube: 'https://www.youtube.com', gmail: 'mailto:', email: 'mailto:',
-  maps: 'geo:0,0?q=', dialer: 'tel:', phone: 'tel:', messages: 'sms:', sms: 'sms:',
-  'play store': 'market://search?q=', playstore: 'market://search?q=',
-  amazon: 'https://www.amazon.in', flipkart: 'https://www.flipkart.com',
-  google: 'https://www.google.com', chrome: 'https://www.google.com',
-  'google pay': 'tez://', gpay: 'tez://'
+  youtube: 'com.google.android.youtube',
+  whatsapp: 'com.whatsapp',
+  instagram: 'com.instagram.android',
+  facebook: 'com.facebook.katana',
+  telegram: 'org.telegram.messenger',
+  spotify: 'com.spotify.music',
+  gmail: 'com.google.android.gm',
+  chrome: 'com.android.chrome',
+  maps: 'com.google.android.apps.maps',
+  google: 'com.google.android.googlequicksearchbox',
+  camera: 'camera',
+  calculator: 'calculator',
+  settings: 'settings',
+  contacts: 'contacts',
+  phone: 'phone',
+  messages: 'messages',
+  playstore: 'com.android.vending',
+  snapchat: 'com.snapchat.android',
+  netflix: 'com.netflix.mediaclient',
+  discord: 'com.discord',
+  linkedin: 'com.linkedin.android',
+  pinterest: 'com.pinterest',
+  reddit: 'com.reddit.frontpage'
 };
 const MUSIC_APPS = {
   'youtube music': q => 'https://music.youtube.com/search?q=' + enc(q),
@@ -445,12 +456,38 @@ function addActionButton(label, fn) {
   row.appendChild(b);
   scrollDown();
 }
-function openAction(url) {
-  if (/^https?:/.test(url)) {
-    window.location.href = url;
-  } else {
-    window.location.href = url;
-  }
+function openAction(app) {
+  const packages = {
+    youtube: 'com.google.android.youtube',
+    whatsapp: 'com.whatsapp',
+    instagram: 'com.instagram.android',
+    facebook: 'com.facebook.katana',
+    telegram: 'org.telegram.messenger',
+    spotify: 'com.spotify.music',
+    gmail: 'com.google.android.gm',
+    chrome: 'com.android.chrome',
+    maps: 'com.google.android.apps.maps',
+    playstore: 'com.android.vending',
+    snapchat: 'com.snapchat.android',
+    netflix: 'com.netflix.mediaclient',
+    discord: 'com.discord'
+  };
+
+  const name = app.toLowerCase().trim();
+  const pkg = packages[name];
+
+  if (!pkg) return false;
+
+  const intent =
+    'intent://#Intent;' +
+    'action=android.intent.action.MAIN;' +
+    'category=android.intent.category.LAUNCHER;' +
+    'package=' + pkg + ';' +
+    'end';
+
+  window.location.href = intent;
+
+  return true;
 }
 
 // ===== 5.7 LOCAL MUSIC (songs stored on your phone) =====
