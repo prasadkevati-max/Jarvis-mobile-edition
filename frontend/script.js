@@ -730,6 +730,17 @@ wakeBtn.onclick = () => {
   if (wakeOn) { if (recActive) stopRec(); setTimeout(() => startRec('wake'), 300); }
   else stopRec();
   updateWake();
+  window.addEventListener('load', () => {
+  if (!rec) return;
+
+  wakeOn = true;
+  awaiting = false;
+  updateWake();
+
+  setTimeout(() => {
+    startRec('wake');
+  }, 1000);
+});
 };
 
 function speakText(text) {
