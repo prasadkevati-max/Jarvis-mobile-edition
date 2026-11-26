@@ -1,6 +1,6 @@
 'use strict';
 // ===== J.A.R.V.I.S — script.js (final: fast streaming + phone actions) =====
-const GEMINI_MODELS = ['gemini-3.8-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash'];
+const GEMINI_MODELS = ['gemini-3.8-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 const SYSTEM_PROMPT = 'You are J.A.R.V.I.S, a friendly personal assistant for Prasshu. Reply in a warm Telugu-English mix. Keep answers short: 1-3 sentences unless asked for more. If you do not know, say so plainly.';
 const $ = id => document.getElementById(id);
 
@@ -26,48 +26,55 @@ function getKey(force) {
 async function callGemini(contents, onChunk) {
   const key = getKey();
   if (!key) throw new Error('API key లేదు. Page reload చేసి Gemini API key ఇవ్వండి.');
-  let lastErr = null;
-  for (const model of GEMINI_MODELS) {
-    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':streamGenerateContent?alt=sse', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents,
-        generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
-      })
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      const msg = (Array.isArray(data) ? data[0]?.error?.message : data?.error?.message) || ('Gemini error ' + res.status);
-      if (res.status === 404) { lastErr = new Error(msg); continue; }
-      if ((res.status === 400 && /api key/i.test(msg)) || res.status === 403) localStorage.removeItem('jarvis_key');
-      throw new Error(msg);
-    }
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    let buf = '', full = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const lines = buf.split('\n');
-      buf = lines.pop();
-      for (const line of lines) {
-        if (!line.startsWith('data:')) continue;
-        const j = line.slice(5).trim();
-        if (!j || j === '[DONE]') continue;
-        try {
-          const d = JSON.parse(j);
-          const p = (d.candidates?.[0]?.content?.parts || []).map(x => x.text || '').join('');
-          if (p) { full += p; if (onChunk) onChunk(full); }
-        } catch (e) {}
+  const RETRY = [404, 429, 500, 502, 503, 504];
+  for (let round = 0; round < 2; round++) {
+    for (const model of GEMINI_MODELS) {
+      try {
+        const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':streamGenerateContent?alt=sse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents,
+            generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
+          })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const msg = (Array.isArray(data) ? data[0]?.error?.message : data?.error?.message) || ('Gemini error ' + res.status);
+          if (RETRY.includes(res.status)) continue;
+          if ((res.status === 400 && /api key/i.test(msg)) || res.status === 403) localStorage.removeItem('jarvis_key');
+          const fatal = new Error(msg); fatal.fatal = true; throw fatal;
+        }
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '', full = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data:')) continue;
+            const j = line.slice(5).trim();
+            if (!j || j === '[DONE]') continue;
+            try {
+              const d = JSON.parse(j);
+              const p = (d.candidates?.[0]?.content?.parts || []).map(x => x.text || '').join('');
+              if (p) { full += p; if (onChunk) onChunk(full); }
+            } catch (e) {}
+          }
+        }
+        if (full.trim()) return full.trim();
+      } catch (e) {
+        if (e.fatal) throw e;
+        // network error or busy model: try the next model
       }
     }
-    if (full.trim()) return full.trim();
-    lastErr = new Error('Gemini empty response ఇచ్చింది.');
+    await new Promise(r => setTimeout(r, 1500));
   }
-  throw lastErr || new Error('Gemini request failed.');
+  throw new Error('Gemini ఇప్పుడు busy గా ఉంది లేదా internet సమస్య ఉంది. కొన్ని సెకన్లలో మళ్ళీ try చేయండి.');
 }
 
 // ===== 3. CHAT STORAGE =====
@@ -376,8 +383,9 @@ async function send(speakReply) {
   setThinking(true, 'J.A.R.V.I.S is thinking');
   let reply, action = null, live = null;
   try {
-    action = img ? null : parsePhoneAction(text);
-    const tool = action ? action.reply : (img ? null : await handleTools(text));
+        const cmd = text.replace(/^\s*(?:(?:hey|hi|ok|okay)\s+)?(?:jarvis|prasshu)\b[\s,.:;!?-]*/i, '').trim();
+    action = img ? null : parsePhoneAction(cmd);
+    const tool = (!img && text && !cmd) ? 'చెప్పండి Boss, వింటున్నాను.' : action ? action.reply : (img ? null : await handleTools(cmd));
     if (tool) {
       reply = tool;
     } else {
@@ -436,7 +444,7 @@ imgInput.onchange = async () => {
 
 // ===== 8. VOICE + WAKE WORD =====
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const WAKE = /\b(?:hey|hi|ok|okay)?\s*(?:jarvis|jarwis|service)\b/i;
+const WAKE = /\b(?:hey|hi|ok|okay)?\s*(?:jarvis|jarwis|service|prasshu)\b/i;
 let rec = null, recActive = false, recMode = 'manual', wakeOn = false, awaiting = false, speaking = false;
 
 function updateWake() {
