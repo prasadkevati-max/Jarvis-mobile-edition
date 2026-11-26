@@ -752,3 +752,26 @@ if (chats.length) currentId = chats[0].id; else newChat();
 renderHistory();
 renderChat();
 updateWake();
+// PRASSHU ONLINE / OFFLINE STATUS
+
+function updateNetworkStatus() {
+  const online = navigator.onLine;
+
+  console.log(
+    online ? '🟢 PRASSHU ONLINE' : '🔴 PRASSHU OFFLINE'
+  );
+}
+
+window.addEventListener('online', updateNetworkStatus);
+window.addEventListener('offline', updateNetworkStatus);
+
+updateNetworkStatus();
+
+// Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(() => console.log('PRASSHU OFFLINE READY'))
+      .catch(console.error);
+  });
+}
