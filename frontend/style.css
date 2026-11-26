@@ -135,6 +135,8 @@ body.is-thinking .hero-orb .orb-aura{animation-duration:1.2s}
 .danger-button{padding:11px 13px;border:1px solid rgba(255,140,154,.25);border-radius:11px;background:rgba(255,140,154,.08);color:var(--danger);text-align:left;font-size:12px;font-weight:600}
 .danger-button:hover{background:rgba(255,140,154,.14)}
 .settings-bottom p{margin:0;color:var(--subtle);font-size:10px}
+
+/* ===== keyframes ===== */
 @keyframes orbSpin{to{transform:rotate(360deg)}}
 @keyframes coreFloat{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-5px) rotate(3deg)}}
 @keyframes thinkingPulse{from{transform:scale(.96);box-shadow:0 0 28px rgba(166,151,255,.18)}to{transform:scale(1.07);box-shadow:0 0 54px rgba(166,151,255,.46)}}
@@ -144,4 +146,68 @@ body.is-thinking .hero-orb .orb-aura{animation-duration:1.2s}
 @keyframes activityIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 @keyframes settingsIn{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
 @keyframes tiltOrbit{from{transform:rotateX(66deg) rotateZ(0)}to{transform:rotateX(66deg) rotateZ(360deg)}}
-@keyframes innerOrbit{from{transform:rotateY(68deg) rotateZ(0)}to{transform:rotateY(68deg) r
+@keyframes innerOrbit{from{transform:rotateY(68deg) rotateZ(0)}to{transform:rotateY(68deg) rotateZ(360deg)}}
+@keyframes auraPulse{0%,100%{opacity:.6;transform:scale(.96)}50%{opacity:1;transform:scale(1.06)}}
+@keyframes beamScan{0%,100%{top:31%;opacity:0}12%{opacity:.5}50%{top:68%;opacity:.55}88%{opacity:0}}
+@keyframes particleFloat{0%,100%{transform:translate(0,0);opacity:.5}50%{transform:translate(4px,-8px);opacity:1}}
+@keyframes listenPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,140,154,.45)}50%{box-shadow:0 0 0 7px rgba(255,140,154,0)}}
+
+/* ===== extras ===== */
+.menu-button{display:none}
+.msg code{background:var(--panel-hover);padding:1px 6px;border-radius:6px;font-size:.92em}
+.msg img{display:block;max-width:240px;width:100%;margin-bottom:6px;border-radius:12px}
+.history-del{margin-left:auto;padding:0 6px;color:var(--subtle);font-size:16px;line-height:1}
+.history-del:hover{color:var(--danger)}
+.wake-button.active{background:var(--accent-soft);color:var(--accent);border-color:var(--border)}
+.composer-tool.listening{color:var(--danger);background:rgba(255,140,154,.1);animation:listenPulse 1.2s ease-in-out infinite}
+#wake-status{white-space:nowrap}
+.action-link{display:inline-block;margin-top:8px;padding:8px 14px;border:1px solid var(--border-strong);border-radius:999px;background:var(--accent-soft);color:var(--accent);text-decoration:none;font-size:12px;font-weight:650}
+.action-link:hover{background:var(--panel-hover)}
+
+/* ===== desktop: collapsed sidebar ===== */
+.app-shell.sidebar-collapsed{grid-template-columns:72px minmax(0,1fr)}
+.sidebar-collapsed .sidebar{width:72px;padding:20px 10px 14px}
+.sidebar-collapsed .sidebar-top{flex-direction:column;gap:14px}
+.sidebar-collapsed .brand-copy,
+.sidebar-collapsed .history-heading,
+.sidebar-collapsed .history-list,
+.sidebar-collapsed .new-chat span:last-child,
+.sidebar-collapsed .sidebar-link span,
+.sidebar-collapsed .profile-name,
+.sidebar-collapsed .profile-label{display:none}
+.sidebar-collapsed .new-chat{justify-content:center;padding:0}
+.sidebar-collapsed .sidebar-link{justify-content:center}
+.sidebar-collapsed .profile-row{justify-content:center}
+.sidebar-collapsed .topbar,
+.sidebar-collapsed .composer-dock{left:72px}
+
+/* ===== mobile / tablet ===== */
+@media (max-width:900px){
+  .app-shell{grid-template-columns:minmax(0,1fr)}
+  .main-area{grid-column:1}
+  .sidebar{width:min(300px,86vw);transform:translateX(-100%);box-shadow:var(--shadow)}
+  .sidebar.open{transform:translateX(0)}
+  .sidebar-backdrop{display:block;position:fixed;inset:0;z-index:29;border:0;background:rgba(3,5,9,.55);backdrop-filter:blur(3px)}
+  .menu-button{display:grid}
+  .topbar{left:0;padding:0 12px;gap:8px}
+  .topbar-divider,.topbar-subtitle,.ready-badge{display:none}
+  .topbar-actions{gap:6px}
+  .composer-dock{left:0;padding:10px 12px max(12px,env(safe-area-inset-bottom))}
+  .composer-note{display:none}
+  .conversation-stage{bottom:92px}
+  .welcome{padding:10px 0 20px}
+  .hero-orb{width:124px;height:124px;margin-bottom:16px}
+  .orb-core{width:56px;height:56px}
+  .orb-core svg{width:42px;height:42px}
+  .welcome h1{font-size:26px}
+  .welcome-subtitle{margin:10px 0 22px;font-size:13px}
+  .prompt-grid{grid-template-columns:1fr}
+  .prompt-card{min-height:60px}
+  .chat{padding:14px 12px 18px}
+  .msg{max-width:92%}
+  .msg.ai{max-width:100%}
+  .settings-panel{width:100vw}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
