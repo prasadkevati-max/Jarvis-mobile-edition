@@ -1,5 +1,5 @@
 'use strict';
-// ===== J.A.R.V.I.S — script.js (final: fast voice + streaming + phone actions + local music) =====
+// ===== J.A.R.V.I.S — script.js (browser + Android-app native control) =====
 const GEMINI_MODELS = ['gemini-3.8-flash-lite', 'gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 const SYSTEM_PROMPT = 'You are J.A.R.V.I.S, a friendly personal assistant for Prasshu. Reply in a warm Telugu-English mix. Keep answers short: 1-3 sentences unless asked for more. If you do not know, say so plainly.';
 const $ = id => document.getElementById(id);
@@ -11,6 +11,8 @@ const historyList = $('history-list'), historyCount = $('history-count');
 const sidebar = $('sidebar'), backdrop = $('sidebar-backdrop');
 const wakeBtn = $('wake-btn'), wakeStatus = $('wake-status');
 const thinking = $('thinking-status'), thinkingLabel = $('thinking-label');
+// Present only inside the Android app (JarvisNative bridge); null in a normal browser
+const NATIVE = window.JarvisNative || null;
 
 // ===== 1. API KEY =====
 function getKey(force) {
@@ -222,8 +224,13 @@ async function handleTools(text) {
   }
   if (/\b(weather|forecast|temperature)\b/.test(t)) {
     try {
-      const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
-      const { latitude, longitude } = pos.coords;
+      let latitude, longitude;
+      const nl = NATIVE ? NATIVE.location() : '';
+      if (nl) { [latitude, longitude] = nl.split(',').map(Number); }
+      else {
+        const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
+        latitude = pos.coords.latitude; longitude = pos.coords.longitude;
+      }
       const d = await getJson('https://api.open-meteo.com/v1/forecast?latitude=' + latitude + '&longitude=' + longitude + '&current=temperature_2m,relative_humidity_2m,wind_speed_10m&timezone=auto');
       const c = d.current;
       return 'ఇప్పుడు temperature ' + c.temperature_2m + '°C, humidity ' + c.relative_humidity_2m + '%, wind ' + c.wind_speed_10m + ' km/h, Boss.';
@@ -251,29 +258,18 @@ function getContacts() {
   try { return JSON.parse(localStorage.getItem('jarvis_contacts') || '{}'); } catch (e) { return {}; }
 }
 const SITES = {
-  youtube: 'com.google.android.youtube',
-  whatsapp: 'com.whatsapp',
-  instagram: 'com.instagram.android',
-  facebook: 'com.facebook.katana',
-  telegram: 'org.telegram.messenger',
-  spotify: 'com.spotify.music',
-  gmail: 'com.google.android.gm',
-  chrome: 'com.android.chrome',
-  maps: 'com.google.android.apps.maps',
-  google: 'com.google.android.googlequicksearchbox',
-  camera: 'camera',
-  calculator: 'calculator',
-  settings: 'settings',
-  contacts: 'contacts',
-  phone: 'phone',
-  messages: 'messages',
-  playstore: 'com.android.vending',
-  snapchat: 'com.snapchat.android',
-  netflix: 'com.netflix.mediaclient',
-  discord: 'com.discord',
-  linkedin: 'com.linkedin.android',
-  pinterest: 'com.pinterest',
-  reddit: 'com.reddit.frontpage'
+  whatsapp: 'intent://send/#Intent;scheme=whatsapp;package=com.whatsapp;end',
+  instagram: 'instagram://app', facebook: 'fb://', telegram: 'tg://', spotify: 'spotify://',
+  twitter: 'twitter://', x: 'twitter://', snapchat: 'snapchat://', linkedin: 'linkedin://',
+  reddit: 'reddit://', pinterest: 'pinterest://', discord: 'discord://', netflix: 'nflx://',
+  hotstar: 'hotstar://', zomato: 'zomato://', swiggy: 'swiggy://', uber: 'uber://',
+  ola: 'olacabs://', phonepe: 'phonepe://', paytm: 'paytmmp://',
+  youtube: 'https://www.youtube.com', gmail: 'mailto:', email: 'mailto:',
+  maps: 'geo:0,0?q=', dialer: 'tel:', phone: 'tel:', messages: 'sms:', sms: 'sms:',
+  'play store': 'market://search?q=', playstore: 'market://search?q=',
+  amazon: 'https://www.amazon.in', flipkart: 'https://www.flipkart.com',
+  google: 'https://www.google.com', chrome: 'https://www.google.com',
+  'google pay': 'tez://', gpay: 'tez://'
 };
 const MUSIC_APPS = {
   'youtube music': q => 'https://music.youtube.com/search?q=' + enc(q),
@@ -456,38 +452,11 @@ function addActionButton(label, fn) {
   row.appendChild(b);
   scrollDown();
 }
-function openAction(app) {
-  const packages = {
-    youtube: 'com.google.android.youtube',
-    whatsapp: 'com.whatsapp',
-    instagram: 'com.instagram.android',
-    facebook: 'com.facebook.katana',
-    telegram: 'org.telegram.messenger',
-    spotify: 'com.spotify.music',
-    gmail: 'com.google.android.gm',
-    chrome: 'com.android.chrome',
-    maps: 'com.google.android.apps.maps',
-    playstore: 'com.android.vending',
-    snapchat: 'com.snapchat.android',
-    netflix: 'com.netflix.mediaclient',
-    discord: 'com.discord'
-  };
-
-  const name = app.toLowerCase().trim();
-  const pkg = packages[name];
-
-  if (!pkg) return false;
-
-  const intent =
-    'intent://#Intent;' +
-    'action=android.intent.action.MAIN;' +
-    'category=android.intent.category.LAUNCHER;' +
-    'package=' + pkg + ';' +
-    'end';
-
-  window.location.href = intent;
-
-  return true;
+function openAction(url) {
+  try {
+    if (/^https?:/.test(url)) window.open(url, '_blank', 'noopener');
+    else window.location.href = url;
+  } catch (e) {}
 }
 
 // ===== 5.7 LOCAL MUSIC (songs stored on your phone) =====
@@ -552,6 +521,95 @@ function parseLocalMusic(text) {
   return null;
 }
 
+// ===== 5.8 NATIVE ANDROID CONTROL (works only inside the Android app) =====
+const recLang = () => localStorage.getItem('jarvis_lang') || 'en-IN';
+function parseNativeAction(text) {
+  if (!NATIVE) return null;
+  const t = text.trim().toLowerCase().replace(/[.!?]+$/, '');
+  let m;
+  const A = (reply, exec) => ({ reply, exec });
+  const NOACC = 'Accessibility ఆన్ లేదు Boss. "enable accessibility" అని చెప్పి, JARVIS ని ఆన్ చేయండి.';
+
+  if (/^(?:grant|give)\s+(?:all\s+)?(?:permissions?|access)$/.test(t))
+    return A('', () => { NATIVE.grantAll(); return 'Permissions అడుగుతున్నాను Boss. అన్నిటికీ Allow నొక్కండి.'; });
+  if (/^(?:enable|open)\s+accessibility$/.test(t))
+    return A('', () => { NATIVE.openAccessibility(); return 'Accessibility settings తెరిచాను Boss. అక్కడ J.A.R.V.I.S ని ఆన్ చేయండి.'; });
+  if ((m = t.match(/^voice\s+(telugu|english|hindi)$/))) {
+    const code = { telugu: 'te-IN', english: 'en-IN', hindi: 'hi-IN' }[m[1]];
+    return A('', () => { localStorage.setItem('jarvis_lang', code); return 'Voice భాష ' + m[1] + ' గా సెట్ అయింది Boss.'; });
+  }
+  if (/^scan files$/.test(t)) return A('', () => 'మొత్తం ' + NATIVE.reindex() + ' files దొరికాయి Boss.');
+  if (/\bbattery\b/.test(t)) return A('', () => 'Battery ' + NATIVE.battery() + '% ఉంది Boss.');
+
+  // Whole-phone gestures (need Accessibility)
+  const G = { home: 'home', 'go home': 'home', back: 'back', 'go back': 'back', 'recent apps': 'recents', recents: 'recents',
+    notifications: 'notifications', lock: 'lock', 'lock screen': 'lock', screenshot: 'screenshot', 'take screenshot': 'screenshot' };
+  if (G[t]) return A('', () => { const r = NATIVE.global(G[t]); return r === 'NOACCESS' ? NOACC : r === 'OK' ? 'సరే Boss.' : 'ఈ పని ఈ phone లో కుదరలేదు Boss.'; });
+  if ((m = t.match(/^(?:click|tap|press)\s+(.+)$/)))
+    return A('', () => { const r = NATIVE.clickText(m[1]); return r === 'NOACCESS' ? NOACC : r === 'OK' ? '"' + m[1] + '" నొక్కాను Boss.' : 'screen పై "' + m[1] + '" కనిపించలేదు Boss.'; });
+
+  // Torch, volume
+  if (/\b(torch|flashlight)\b/.test(t) && /\b(on|off)\b/.test(t)) {
+    const on = /\bon\b/.test(t);
+    return A('', () => { const r = NATIVE.torch(on); return r === 'OK' ? 'Torch ' + (on ? 'ఆన్' : 'ఆఫ్') + ' చేశాను Boss.' : 'ఈ phone లో torch కుదరలేదు Boss.'; });
+  }
+  if ((m = t.match(/^(?:volume\s+(up|down|max|mute|\d{1,3})|(increase|decrease)\s+volume)$/))) {
+    const v = m[1] || (m[2] === 'increase' ? 'up' : 'down');
+    return A('', () => { NATIVE.volume(v); return 'Volume ' + v + ' Boss.'; });
+  }
+
+  // Alarm, timer
+  if ((m = t.match(/\bset (?:an? )?alarm (?:for |at )?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/))) {
+    let h = +m[1]; const mi = +(m[2] || 0);
+    if (m[3] === 'pm' && h < 12) h += 12;
+    if (m[3] === 'am' && h === 12) h = 0;
+    if (h > 23 || mi > 59) return null;
+    return A('', () => NATIVE.alarm(h, mi) === 'OK' ? 'Alarm ' + String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0') + ' కి సెట్ చేశాను Boss.' : 'Alarm కుదరలేదు Boss.');
+  }
+  if ((m = t.match(/\bset (?:a )?timer (?:for )?(\d+)\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)/))) {
+    const n = +m[1], u = m[2][0], secs = u === 'h' ? n * 3600 : u === 'm' ? n * 60 : n;
+    return A('', () => NATIVE.timer(secs) === 'OK' ? 'Timer ' + n + ' ' + m[2] + ' సెట్ చేశాను Boss.' : 'Timer కుదరలేదు Boss.');
+  }
+
+  // Calls and messages (names come from your phone contacts)
+  if ((m = t.match(/^(?:sms|text)\s+(\+?[\d-]{6,}|[a-z]+)\s+(.+)$/)))
+    return A('', () => { const r = NATIVE.sendSms(m[1], m[2]); return r === 'NOCONTACT' ? '"' + m[1] + '" contact దొరకలేదు Boss.' : r === 'DRAFT' ? 'SMS draft సిద్ధం Boss, Send నొక్కండి.' : r === 'OK' ? 'SMS పంపాను Boss.' : 'SMS కుదరలేదు Boss.'; });
+  if ((m = t.match(/^whatsapp\s+(\+?[\d-]{6,}|[a-z]+)\s+(.+)$/)))
+    return A('', () => { const r = NATIVE.whatsapp(m[1], m[2]); return r === 'NOCONTACT' ? '"' + m[1] + '" contact దొరకలేదు Boss.' : r === 'SENT' ? 'WhatsApp message పంపుతున్నాను Boss.' : r === 'OPENED' ? 'WhatsApp లో message సిద్ధం Boss. Send నొక్కండి (auto-send కోసం "enable accessibility" అనండి).' : 'WhatsApp కుదరలేదు Boss.'; });
+  if ((m = t.match(/^call\s+(.+)$/)))
+    return A('', () => { const r = NATIVE.call(m[1]); return r === 'NOCONTACT' ? '"' + m[1] + '" contact దొరకలేదు Boss.' : r === 'OK' ? m[1] + ' కి call చేస్తున్నాను Boss.' : r === 'DIAL' ? 'Dialer తెరిచాను Boss, Call నొక్కండి.' : 'Call కుదరలేదు Boss.'; });
+
+  // Songs on the phone
+  if (/^(?:play\s+(?:some\s+|my\s+)?(?:music|songs)|my songs|shuffle)$/.test(t))
+    return A('', () => { const r = NATIVE.playSong(''); return r ? 'ప్లే చేస్తున్నాను: ' + r : 'Phone లో పాటలు దొరకలేదు Boss. "grant permissions" అనండి.'; });
+  if (/^(pause|stop)\s+(?:the\s+)?(?:music|song)$/.test(t)) return A('', () => { NATIVE.music(t.startsWith('stop') ? 'stop' : 'pause'); return 'ఆపేశాను Boss.'; });
+  if (/^(resume|continue)\s+(?:the\s+)?(?:music|song)$/.test(t)) return A('', () => { NATIVE.music('resume'); return 'కొనసాగిస్తున్నాను Boss.'; });
+  if (/^next\s+(?:song|track)$/.test(t)) return A('', () => 'తర్వాతి పాట: ' + NATIVE.music('next'));
+  if (/^(?:previous|last)\s+(?:song|track)$/.test(t)) return A('', () => 'ముందు పాట: ' + NATIVE.music('prev'));
+  if ((m = t.match(/^(?:list|show|find)\s+(?:my\s+)?(songs|music|photos|pictures|videos|files|documents)(?:\s+(.+))?$/))) {
+    const kind = { songs: 'audio', music: 'audio', photos: 'image', pictures: 'image', videos: 'video', files: 'any', documents: 'doc' }[m[1]];
+    return A('', () => NATIVE.findFiles(kind, m[2] || '') || 'ఏమీ దొరకలేదు Boss.');
+  }
+  if ((m = t.match(/^play\s+(?:song\s+)?(.+)$/)) && NATIVE.findFiles('audio', m[1]))
+    return A('', () => { const r = NATIVE.playSong(m[1]); return r ? 'ప్లే చేస్తున్నాను: ' + r : 'ఆ పాట ప్లే కాలేదు Boss.'; });
+
+  // Photos, videos, documents from internal storage
+  if ((m = t.match(/^open\s+(?:the\s+)?(?:(?:last|latest)\s+)?(photo|picture|image|video|file|document|doc|pdf)s?(?:\s+(.+))?$/))) {
+    const kind = { photo: 'image', picture: 'image', image: 'image', video: 'video', file: 'any', document: 'doc', doc: 'doc', pdf: 'doc' }[m[1]];
+    const q = (m[2] || '').replace(/^named\s+/, '');
+    return A('', () => { const r = NATIVE.openFile(kind, q); return !r ? 'ఏమీ దొరకలేదు Boss. "grant permissions" అని storage access ఇవ్వండి.' : r === 'ERR' ? 'ఆ file తెరవడానికి app లేదు Boss.' : r + ' తెరుస్తున్నాను Boss.'; });
+  }
+
+  // Phone settings screens
+  if ((m = t.match(/^(?:open\s+)?(wi-?fi|bluetooth|location|display|sound|battery|storage|apps|airplane|data)\s+settings?$/)))
+    return A('', () => { NATIVE.settings(m[1].replace('-', '')); return m[1] + ' settings తెరిచాను Boss.'; });
+
+  // Any installed app by name
+  if ((m = t.match(/^(?:open|launch|start)\s+(.+)$/)))
+    return A('', () => { const r = NATIVE.openApp(m[1]); return r === 'NOTFOUND' ? '"' + m[1] + '" app phone లో దొరకలేదు Boss.' : r + ' తెరుస్తున్నాను Boss.'; });
+  return null;
+}
+
 // ===== 6. SEND =====
 let busy = false;
 let pendingImage = null; // { data, mime, preview }
@@ -589,59 +647,21 @@ async function send(speakReply) {
   let reply, action = null, live = null;
   try {
     const cmd = text.replace(/^\s*(?:(?:hey|hi|ok|okay)\s+)?(?:jarvis|prasshu)\b[\s,.:;!?-]*/i, '').trim();
-    action = img ? null : (parseLocalMusic(cmd) || parsePhoneAction(cmd));
-    const tool = (!img && text && !cmd) ? 'చెప్పండి Boss, వింటున్నాను.' : action ? action.reply : (img ? null : await handleTools(cmd));
+    action = img ? null : (parseNativeAction(cmd) || parseLocalMusic(cmd) || parsePhoneAction(cmd));
+    const tool = (!img && text && !cmd) ? 'చెప్పండి Boss, వింటున్నాను.' : action ? (action.exec ? action.exec() : action.reply) : (img ? null : await handleTools(cmd));
     if (tool) {
       reply = tool;
     } else {
       const history = chatObj.messages.slice(-7, -1).map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text }] }));
       const parts = [{ text: shown }];
       if (img) parts.push({ inline_data: { mime_type: img.mime, data: img.data } });
-      try {
-  reply = await callGemini(
-    [...history, { role: 'user', parts }],
-    t => {
-      if (!live) {
-        setThinking(false);
-        live = addBubble('ai', t);
-      } else {
-        live.innerHTML = fmt(t);
-        scrollDown();
-      }
-    }
-  );
-
-} catch (geminiError) {
-  console.log('Gemini failed. Starting Offline AI...');
-
-  if (live) {
-    live.remove();
-    live = null;
-  }
-
-  if (img) {
-    throw new Error('Offline image analysis ఇంకా అందుబాటులో లేదు.');
-  }
-
-  setThinking(true, 'PRASSHU Offline AI Loading...');
-
-  if (typeof askOfflineAI !== 'function') {
-    throw new Error('Offline AI module అందుబాటులో లేదు.');
-  }
-
-  reply = await askOfflineAI(shown);
-
-  if (!reply || !String(reply).trim()) {
-    throw new Error('Offline AI response రాలేదు.');
-  }
-
-  reply = String(reply).trim();
-
-  console.log('PRASSHU OFFLINE AI READY');
-}
+      reply = await callGemini([...history, { role: 'user', parts }], t => {
+        if (!live) { setThinking(false); live = addBubble('ai', t); }
+        else { live.innerHTML = fmt(t); scrollDown(); }
+      });
     }
   } catch (e) {
-    reply = 'SYSTEM: ' + (e.message || 'Something went wrong.');
+    reply = 'SYSTEM: ' + (!navigator.onLine ? 'Internet లేదు Boss. Offline లో phone commands (apps, songs, photos, files, call, alarm) మాత్రమే పని చేస్తాయి.' : (e.message || 'Something went wrong.'));
     chatObj.messages.push({ role: 'model', text: reply });
     addBubble('ai', reply);
     setThinking(false); busy = false; saveChats(); resumeWake();
@@ -655,9 +675,7 @@ async function send(speakReply) {
   busy = false;
   if (action && action.run) action.run();
   else if (action && action.button) addActionButton(action.button.label, action.button.fn);
-  else if (action && action.url) {
-  openAction(action.url);
-  }
+  else if (action && action.url) { addActionLink(action); if (!speakReply) openAction(action.url); }
   if (speakReply || wakeOn) speakText(reply); else resumeWake();
 }
 
@@ -759,6 +777,31 @@ if (SR) {
   wakeStatus.textContent = 'VOICE UNAVAILABLE';
 }
 
+// Native (Android app) speech: works offline if the offline language pack is installed
+if (NATIVE) {
+  rec = {
+    continuous: false, interimResults: false,
+    start() { NATIVE.startListening(recLang()); },
+    stop() { NATIVE.stopListening(); }
+  };
+  wakeBtn.disabled = false;
+  window.onNativeSpeech = (text, isFinal) => {
+    if (!isFinal) { if (recMode === 'manual' && text) input.value = text; return; }
+    if (text) onHeard(text.trim());
+  };
+  window.onNativeSpeechEnd = err => {
+    recActive = false; micBtn.classList.remove('listening');
+    if (err === 'perm' || err === 'noengine') {
+      wakeOn = false;
+      addBubble('ai', err === 'perm' ? 'SYSTEM: Microphone permission ఇవ్వండి Boss ("grant permissions" అనండి).' : 'SYSTEM: ఈ phone లో speech engine లేదు.');
+    }
+    updateWake();
+    if (err !== 'perm' && err !== 'noengine') resumeWake();
+  };
+  window.onNativeSpeakDone = () => { speaking = false; resumeWake(); };
+  updateWake();
+}
+
 micBtn.onclick = () => {
   if (!rec) { addBubble('ai', 'SYSTEM: ఈ browser లో voice input support లేదు. Chrome వాడండి.'); return; }
   if (recActive) { stopRec(); return; }
@@ -770,20 +813,15 @@ wakeBtn.onclick = () => {
   if (wakeOn) { if (recActive) stopRec(); setTimeout(() => startRec('wake'), 300); }
   else stopRec();
   updateWake();
-  window.addEventListener('load', () => {
-  if (!rec) return;
-
-  wakeOn = true;
-  awaiting = false;
-  updateWake();
-
-  setTimeout(() => {
-    startRec('wake');
-  }, 1000);
-});
 };
 
 function speakText(text) {
+  if (NATIVE) {
+    const c = String(text).replace(/[*`#]/g, '');
+    speaking = true;
+    NATIVE.speak(c, /[\u0C00-\u0C7F]/.test(c) ? 'te-IN' : 'en-IN');
+    return;
+  }
   if (!('speechSynthesis' in window)) { resumeWake(); return; }
   window.speechSynthesis.cancel();
   const clean = String(text).replace(/[*`#]/g, '');
@@ -792,19 +830,8 @@ function speakText(text) {
   speaking = true;
   const done = () => { speaking = false; resumeWake(); };
   u.onend = done; u.onerror = done;
-  window.speechSynthesis.speak(u);}
-  // PRASSHU AUTO WAKE
-setTimeout(() => {
-  if (!rec) return;
-
-  wakeOn = true;
-  awaiting = false;
-  updateWake();
-  startRec('wake');
-
-  console.log('PRASSHU AUTO WAKE STARTED');
-}, 1500);
-
+  window.speechSynthesis.speak(u);
+}
 
 // ===== 9. SIDEBAR, SETTINGS, THEME =====
 function setSidebar(open) {
